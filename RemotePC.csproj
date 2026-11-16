@@ -45,6 +45,11 @@
     <Compile Include="src\Common\InputSimulator.cs" />
     <Compile Include="src\Common\ScreenCapturer.cs" />
     <Compile Include="src\Common\SystemInfo.cs" />
+    <Compile Include="src\Common\AppSettings.cs" />
+    <Compile Include="src\Common\AppShortcutHelper.cs" />
+    <Compile Include="src\Common\FirewallHelper.cs" />
+    <Compile Include="src\Common\NetworkDiscovery.cs" />
+    <Compile Include="src\Common\UPnPPortForwarder.cs" />
     <Compile Include="src\Server\ServerSession.cs" />
     <Compile Include="src\Server\RemoteServer.cs" />
     <Compile Include="src\Client\RemoteClient.cs" />

@@ -7,13 +7,21 @@ namespace RemotePC.Common
 {
     public static class AppShortcutHelper
     {
-        private static bool CreateShortcut(string shortcutPath, string arguments, out string error)
+        public const string ShortcutName = "Remote PC";
+        private const string ShortcutDescription = "Remote PC - Remote Desktop Application";
+
+        private static bool CreateShortcut(string shortcutPath, string exePath, string arguments, out string error)
         {
             error = null;
             try
             {
-                string exePath = Application.ExecutablePath;
+                if (string.IsNullOrEmpty(exePath))
+                    exePath = Application.ExecutablePath;
+
                 string workDir = Path.GetDirectoryName(exePath);
+                string parent = Path.GetDirectoryName(shortcutPath);
+                if (!string.IsNullOrEmpty(parent) && !Directory.Exists(parent))
+                    Directory.CreateDirectory(parent);
 
                 Type shellType = Type.GetTypeFromProgID("WScript.Shell");
                 if (shellType == null)
@@ -28,7 +36,7 @@ namespace RemotePC.Common
                 Type scType = shortcut.GetType();
                 scType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { exePath });
                 scType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { workDir });
-                scType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "Remote PC - Remote Desktop Application" });
+                scType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { ShortcutDescription });
 
                 if (!string.IsNullOrEmpty(arguments))
                 {
@@ -45,29 +53,40 @@ namespace RemotePC.Common
             }
         }
 
+        private static string StartMenuPath
+        {
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), ShortcutName + ".lnk"); }
+        }
+
+        private static string DesktopPath
+        {
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), ShortcutName + ".lnk"); }
+        }
+
+        private static string StartupPath
+        {
+            get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), ShortcutName + ".lnk"); }
+        }
+
+        #region Start Menu
+
         public static bool CreateStartMenuShortcut(out string error)
         {
-            try
-            {
-                string startMenu = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-                string shortcutPath = Path.Combine(startMenu, "Remote PC.lnk");
-                return CreateShortcut(shortcutPath, null, out error);
-            }
-            catch (Exception ex)
-            {
-                error = ex.Message;
-                return false;
-            }
+            return CreateShortcut(StartMenuPath, null, null, out error);
+        }
+
+        public static bool CreateStartMenuShortcut(string exePath, string displayName, out string location)
+        {
+            string error;
+            location = StartMenuPath;
+            bool ok = CreateShortcut(StartMenuPath, exePath, null, out error);
+            if (!ok) location = error;
+            return ok;
         }
 
         public static bool IsStartMenuShortcutPresent()
         {
-            try
-            {
-                string startMenu = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-                string shortcutPath = Path.Combine(startMenu, "Remote PC.lnk");
-                return File.Exists(shortcutPath);
-            }
+            try { return File.Exists(StartMenuPath); }
             catch { return false; }
         }
 
@@ -76,9 +95,7 @@ namespace RemotePC.Common
             error = null;
             try
             {
-                string startMenu = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
-                string shortcutPath = Path.Combine(startMenu, "Remote PC.lnk");
-                if (File.Exists(shortcutPath)) File.Delete(shortcutPath);
+                if (File.Exists(StartMenuPath)) File.Delete(StartMenuPath);
                 return true;
             }
             catch (Exception ex)
@@ -88,19 +105,35 @@ namespace RemotePC.Common
             }
         }
 
+        #endregion
+
+        #region Desktop
+
         public static bool CreateDesktopShortcut(out string error)
         {
-            try
-            {
-                string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-                string shortcutPath = Path.Combine(desktop, "Remote PC.lnk");
-                return CreateShortcut(shortcutPath, null, out error);
-            }
-            catch (Exception ex)
-            {
-                error = ex.Message;
-                return false;
-            }
+            return CreateShortcut(DesktopPath, null, null, out error);
+        }
+
+        public static bool CreateDesktopShortcut(string exePath, string displayName, out string location)
+        {
+            string error;
+            location = DesktopPath;
+            bool ok = CreateShortcut(DesktopPath, exePath, null, out error);
+            if (!ok) location = error;
+            return ok;
+        }
+
+        #endregion
+
+        #region Start With Windows
+
+        public static bool CreateStartupShortcut(string exePath, string displayName, out string location)
+        {
+            string error;
+            location = StartupPath;
+            bool ok = CreateShortcut(StartupPath, exePath, "-minimized", out error);
+            if (!ok) location = error;
+            return ok;
         }
 
         public static bool SetStartWithWindows(bool enable, out string error)
@@ -108,19 +141,10 @@ namespace RemotePC.Common
             error = null;
             try
             {
-                // Use Windows Startup folder (works universally with 0 registry elevation needed)
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                string startupShortcut = Path.Combine(startupFolder, "Remote PC.lnk");
+                if (enable) return CreateShortcut(StartupPath, null, "-minimized", out error);
 
-                if (enable)
-                {
-                    return CreateShortcut(startupShortcut, "-minimized", out error);
-                }
-                else
-                {
-                    if (File.Exists(startupShortcut)) File.Delete(startupShortcut);
-                    return true;
-                }
+                if (File.Exists(StartupPath)) File.Delete(StartupPath);
+                return true;
             }
             catch (Exception ex)
             {
@@ -131,13 +155,10 @@ namespace RemotePC.Common
 
         public static bool IsStartWithWindowsEnabled()
         {
-            try
-            {
-                string startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-                string startupShortcut = Path.Combine(startupFolder, "Remote PC.lnk");
-                return File.Exists(startupShortcut);
-            }
+            try { return File.Exists(StartupPath); }
             catch { return false; }
         }
+
+        #endregion
     }
 }

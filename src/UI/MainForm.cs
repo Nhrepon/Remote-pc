@@ -41,6 +41,7 @@ namespace RemotePC.UI
         private GroupBox _gbHostAuto;
         private CheckBox _chkAutoStartServer;
         private CheckBox _chkTrayOnClose;
+        private Label _lblAutoStatus;
 
         private RemoteServer _server;
 
@@ -301,7 +302,7 @@ namespace RemotePC.UI
             _gbHostAuto = new GroupBox();
             _gbHostAuto.Text = " ⚡ Zero-Work Automation & Shortcuts ";
             _gbHostAuto.Location = new Point(20, top);
-            _gbHostAuto.Size = new Size(690, 108);
+            _gbHostAuto.Size = new Size(690, 148);
             _gbHostAuto.Padding = new Padding(12, 8, 12, 8);
             _tabHost.Controls.Add(_gbHostAuto);
 
@@ -339,12 +340,25 @@ namespace RemotePC.UI
             btnDesktop.Click += delegate { CreateShortcut("desktop"); };
             flowShortcuts.Controls.Add(btnDesktop);
 
-            Button btnStartup = new Button() { Text = "🚀 Start with Windows", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 0, 0) };
+            Button btnStartup = new Button() { Text = "🚀 Start with Windows", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 10, 0) };
             btnStartup.FlatStyle = FlatStyle.Flat;
             btnStartup.Click += delegate { CreateShortcut("startup"); };
             flowShortcuts.Controls.Add(btnStartup);
 
-            top += 118;
+            Button btnFirewall = new Button() { Text = "🛡 Auto-Configure Firewall", AutoSize = true, Height = 30, Margin = new Padding(0) };
+            btnFirewall.FlatStyle = FlatStyle.Flat;
+            btnFirewall.Click += delegate { FixFirewallNow(); };
+            flowShortcuts.Controls.Add(btnFirewall);
+
+            // Row 3: Status of the automatic setup
+            _lblAutoStatus = new Label();
+            _lblAutoStatus.Location = new Point(12, 104);
+            _lblAutoStatus.AutoSize = true;
+            _lblAutoStatus.ForeColor = Color.FromArgb(90, 90, 90);
+            _lblAutoStatus.Text = "Automatic setup: checking...";
+            _gbHostAuto.Controls.Add(_lblAutoStatus);
+
+            top += 158;
 
             // 6. Activity Log Header
             _pnlLogHeader = new TableLayoutPanel();
@@ -392,7 +406,19 @@ namespace RemotePC.UI
                 }
                 else if (target == "startup")
                 {
-                    ok = AppShortcutHelper.CreateStartupShortcut(exePath, "Remote PC", out location);
+                    // Toggle: a second click removes it again.
+                    if (AppShortcutHelper.IsStartWithWindowsEnabled())
+                    {
+                        string removeError;
+                        ok = AppShortcutHelper.SetStartWithWindows(false, out removeError);
+                        location = ok ? "Removed from Windows startup." : removeError;
+                        if (_settings != null) { _settings.StartWithWindows = false; _settings.Save(); }
+                    }
+                    else
+                    {
+                        ok = AppShortcutHelper.CreateStartupShortcut(exePath, "Remote PC", out location);
+                        if (ok && _settings != null) { _settings.StartWithWindows = true; _settings.Save(); }
+                    }
                 }
 
                 if (ok)
@@ -476,14 +502,21 @@ namespace RemotePC.UI
                     _btnGenPin.Enabled = false;
 
                     // Start LAN broadcasting so other PCs can discover us
-                    try { NetworkDiscovery.StartBroadcasting(port, _txtHostPassword.Text.Trim()); }
+                    try { NetworkDiscovery.StartBroadcasting(port); }
                     catch { }
 
+                    // Ensure the firewall lets this port in, without ever asking the user to do it
+                    EnsureFirewallRulesAsync(port);
+
                     // Try UPnP port forward in background (non-blocking)
-                    System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                    UPnPPortForwarder.ForwardPortAsync(port, delegate(bool ok, string message)
                     {
-                        try { UPnPPortForwarder.ForwardPortAsync(port); }
-                        catch { }
+                        LogHostLine(ok ? "[UPnP] " + message : "[UPnP] " + message);
+                        if (ok && !string.IsNullOrEmpty(UPnPPortForwarder.ExternalPublicIp))
+                        {
+                            LogHostLine(string.Format("[UPnP] Share this public address with PC 2: {0}:{1}",
+                                UPnPPortForwarder.ExternalPublicIp, port));
+                        }
                     });
                 }
                 catch (Exception ex)
@@ -791,7 +824,8 @@ namespace RemotePC.UI
                 "  Option A: Install free Tailscale on both PCs → use the 100.x.x.x IP shown in this app (★ marked)\n" +
                 "  Option B: This app auto-tries UPnP port forwarding on your router (no manual config needed)\n" +
                 "  Option C: Forward TCP port 8888 manually on your router → use your public IP\n\n" +
-                "TIPS: Windows Firewall → Allow RemotePC on Private networks when prompted.\n" +
+                "TIPS: No manual setup needed - the app adds itself to the Start Menu and opens the\n" +
+                "Windows Firewall on first run (approve the single UAC prompt when asked).\n" +
                 "Settings are auto-saved between sessions. Shortcuts: use the 'Zero-Work Automation' buttons on the Host tab.";
             _tabClient.Controls.Add(_rtbGuide);
         }
@@ -1041,6 +1075,149 @@ namespace RemotePC.UI
 
         #region Form Shown / Auto-Start
 
+        /// <summary>
+        /// Everything the app needs in order to work the moment RemotePC.exe is launched:
+        /// Start Menu entry, Windows Firewall rules, and the server's own port. Runs once in
+        /// the background so a UAC prompt or a slow netsh call never blocks the window.
+        /// </summary>
+        private void RunFirstRunSetupAsync()
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    // 1. Start Menu shortcut, created for the current user - no elevation needed.
+                    if (!AppShortcutHelper.IsStartMenuShortcutPresent())
+                    {
+                        string error;
+                        if (AppShortcutHelper.CreateStartMenuShortcut(out error))
+                            LogHostLine("[Setup] Added 'Remote PC' to the Start Menu.");
+                        else
+                            LogHostLine("[Setup] Start Menu shortcut skipped: " + error);
+                    }
+
+                    // 2. Firewall rules so other PCs can reach this one.
+                    int port = 8888;
+                    try { port = (int)this.Invoke(new Func<int>(delegate { return (int)_numHostPort.Value; })); }
+                    catch { }
+
+                    List<int> ports = new List<int>();
+                    ports.Add(port);
+                    if (_settings != null && _settings.ServerPort != port) ports.Add(_settings.ServerPort);
+
+                    string fwError;
+                    bool fwOk = FirewallHelper.EnsureRules(ports, out fwError);
+                    if (fwOk)
+                    {
+                        LogHostLine("[Setup] Windows Firewall rules ready - no manual configuration needed.");
+                        if (_settings != null && !_settings.FirstRunComplete)
+                        {
+                            _settings.FirstRunComplete = true;
+                            _settings.Save();
+                        }
+                    }
+                    else
+                    {
+                        LogHostLine("[Setup] Firewall rules not applied (" + fwError + "). LAN connections may be blocked.");
+                    }
+
+                    // 3. Windows startup entry, so the PC stays reachable after a reboot.
+                    if (_settings != null && _settings.StartWithWindows && !AppShortcutHelper.IsStartWithWindowsEnabled())
+                    {
+                        string sLocation;
+                        if (AppShortcutHelper.CreateStartupShortcut(Application.ExecutablePath, "Remote PC", out sLocation))
+                            LogHostLine("[Setup] Remote PC will start with Windows.");
+                        else
+                            LogHostLine("[Setup] Windows startup entry skipped: " + sLocation);
+                    }
+
+                    SetAutoStatus(fwOk
+                        ? "Automatic setup: firewall open, Start Menu entry ready."
+                        : "Automatic setup: firewall NOT open - click 'Auto-Configure Firewall'.");
+                }
+                catch (Exception ex)
+                {
+                    LogHostLine("[Setup] Skipped: " + ex.Message);
+                }
+            });
+        }
+
+        /// <summary>Writes the automatic-setup summary line above the Shortcut buttons.</summary>
+        private void SetAutoStatus(string text)
+        {
+            if (this.IsDisposed || _lblAutoStatus == null) return;
+            try
+            {
+                if (this.InvokeRequired)
+                {
+                    this.BeginInvoke(new Action<string>(SetAutoStatus), text);
+                    return;
+                }
+                _lblAutoStatus.Text = text;
+            }
+            catch { }
+        }
+
+        /// <summary>Manual re-run of the firewall step, for when the first UAC prompt was declined.</summary>
+        private void FixFirewallNow()
+        {
+            int port = (int)_numHostPort.Value;
+            SetAutoStatus("Automatic setup: configuring firewall...");
+
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                List<int> ports = new List<int>();
+                ports.Add(port);
+                ports.Add(NetworkDiscovery.DISCOVERY_PORT);
+
+                string error;
+                bool ok = FirewallHelper.EnsureRules(ports, out error);
+
+                LogHostLine(ok
+                    ? "[Firewall] Rules are in place for TCP " + port + " and UDP " + NetworkDiscovery.DISCOVERY_PORT + "."
+                    : "[Firewall] Failed: " + error);
+
+                SetAutoStatus(ok
+                    ? "Automatic setup: firewall open, Start Menu entry ready."
+                    : "Automatic setup: firewall NOT open - click 'Auto-Configure Firewall'.");
+            });
+        }
+
+        /// <summary>Firewall rule check for a specific port, used when the user starts the server.</summary>
+        private void EnsureFirewallRulesAsync(int port)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    List<int> ports = new List<int>();
+                    ports.Add(port);
+                    ports.Add(NetworkDiscovery.DISCOVERY_PORT);
+
+                    string error;
+                    if (!FirewallHelper.EnsureRules(ports, out error))
+                        LogHostLine("[Firewall] Could not open port " + port + ": " + error);
+                }
+                catch { }
+            });
+        }
+
+        /// <summary>Appends a line to the host activity log from any thread.</summary>
+        private void LogHostLine(string message)
+        {
+            if (this.IsDisposed) return;
+            try
+            {
+                if (this.InvokeRequired)
+                {
+                    this.BeginInvoke(new Action<string>(LogHostLine), message);
+                    return;
+                }
+                Server_OnLog(message);
+            }
+            catch { }
+        }
+
         private void MainForm_Shown(object sender, EventArgs e)
         {
             UpdateResponsiveLayout();
@@ -1057,6 +1234,9 @@ namespace RemotePC.UI
                     break;
                 }
             }
+
+            // Zero-touch setup: firewall rules and a Start Menu entry, done automatically.
+            RunFirstRunSetupAsync();
 
             if (startMinimized && _chkTrayOnClose != null && _chkTrayOnClose.Checked)
             {

@@ -8,33 +8,40 @@ namespace RemotePC.Common
         private static readonly string SettingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RemotePC");
         private static readonly string SettingsFile = Path.Combine(SettingsDir, "settings.ini");
 
-        public int HostPort { get; set; }
-        public string HostPassword { get; set; }
+        public int ServerPort { get; set; }
+        public string Password { get; set; }
         public bool AutoStartServer { get; set; }
         public bool StartWithWindows { get; set; }
         public bool MinimizeToTray { get; set; }
         public bool AllowControl { get; set; }
-        public bool AllowFiles { get; set; }
+        public bool AllowFileTransfer { get; set; }
 
-        public string ClientHost { get; set; }
-        public int ClientPort { get; set; }
-        public string ClientPassword { get; set; }
+        public string LastHost { get; set; }
+        public string LastPassword { get; set; }
         public bool AutoConnect { get; set; }
+
+        // First-run automation bookkeeping
+        public bool FirstRunComplete { get; set; }
+        public string FirewallRulePorts { get; set; }
+        public bool UpnpAttempted { get; set; }
 
         public AppSettings()
         {
-            HostPort = 8888;
-            HostPassword = new Random().Next(100000, 999999).ToString();
+            ServerPort = 8888;
+            Password = new Random().Next(100000, 999999).ToString();
             AutoStartServer = false;
             StartWithWindows = false;
             MinimizeToTray = false;
             AllowControl = true;
-            AllowFiles = true;
+            AllowFileTransfer = true;
 
-            ClientHost = "";
-            ClientPort = 8888;
-            ClientPassword = "";
+            LastHost = "";
+            LastPassword = "";
             AutoConnect = false;
+
+            FirstRunComplete = false;
+            FirewallRulePorts = "";
+            UpnpAttempted = false;
         }
 
         public static AppSettings Load()
@@ -56,22 +63,30 @@ namespace RemotePC.Common
                         string key = line.Substring(0, eq).Trim();
                         string val = line.Substring(eq + 1).Trim();
 
-                        if (key == "HostPort") { int p; if (int.TryParse(val, out p)) s.HostPort = p; }
-                        else if (key == "HostPassword") s.HostPassword = val;
-                        else if (key == "AutoStartServer") s.AutoStartServer = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                        else if (key == "StartWithWindows") s.StartWithWindows = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                        else if (key == "MinimizeToTray") s.MinimizeToTray = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                        else if (key == "AllowControl") s.AllowControl = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                        else if (key == "AllowFiles") s.AllowFiles = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
-                        else if (key == "ClientHost") s.ClientHost = val;
-                        else if (key == "ClientPort") { int p; if (int.TryParse(val, out p)) s.ClientPort = p; }
-                        else if (key == "ClientPassword") s.ClientPassword = val;
-                        else if (key == "AutoConnect") s.AutoConnect = val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                        // Keys written by older builds are still accepted.
+                        if (key == "ServerPort" || key == "HostPort") { int p; if (int.TryParse(val, out p)) s.ServerPort = p; }
+                        else if (key == "Password" || key == "HostPassword") s.Password = val;
+                        else if (key == "AutoStartServer") s.AutoStartServer = ParseBool(val);
+                        else if (key == "StartWithWindows") s.StartWithWindows = ParseBool(val);
+                        else if (key == "MinimizeToTray") s.MinimizeToTray = ParseBool(val);
+                        else if (key == "AllowControl") s.AllowControl = ParseBool(val);
+                        else if (key == "AllowFileTransfer" || key == "AllowFiles") s.AllowFileTransfer = ParseBool(val);
+                        else if (key == "LastHost" || key == "ClientHost") s.LastHost = val;
+                        else if (key == "LastPassword" || key == "ClientPassword") s.LastPassword = val;
+                        else if (key == "AutoConnect") s.AutoConnect = ParseBool(val);
+                        else if (key == "FirstRunComplete") s.FirstRunComplete = ParseBool(val);
+                        else if (key == "FirewallRulePorts") s.FirewallRulePorts = val;
+                        else if (key == "UpnpAttempted") s.UpnpAttempted = ParseBool(val);
                     }
                 }
             }
             catch { }
             return s;
+        }
+
+        private static bool ParseBool(string val)
+        {
+            return val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
 
         public void Save()
@@ -86,17 +101,19 @@ namespace RemotePC.Common
                 using (StreamWriter sw = new StreamWriter(SettingsFile, false))
                 {
                     sw.WriteLine("# RemotePC Persistent Configuration");
-                    sw.WriteLine("HostPort=" + HostPort);
-                    sw.WriteLine("HostPassword=" + (HostPassword ?? ""));
+                    sw.WriteLine("ServerPort=" + ServerPort);
+                    sw.WriteLine("Password=" + (Password ?? ""));
                     sw.WriteLine("AutoStartServer=" + (AutoStartServer ? "1" : "0"));
                     sw.WriteLine("StartWithWindows=" + (StartWithWindows ? "1" : "0"));
                     sw.WriteLine("MinimizeToTray=" + (MinimizeToTray ? "1" : "0"));
                     sw.WriteLine("AllowControl=" + (AllowControl ? "1" : "0"));
-                    sw.WriteLine("AllowFiles=" + (AllowFiles ? "1" : "0"));
-                    sw.WriteLine("ClientHost=" + (ClientHost ?? ""));
-                    sw.WriteLine("ClientPort=" + ClientPort);
-                    sw.WriteLine("ClientPassword=" + (ClientPassword ?? ""));
+                    sw.WriteLine("AllowFileTransfer=" + (AllowFileTransfer ? "1" : "0"));
+                    sw.WriteLine("LastHost=" + (LastHost ?? ""));
+                    sw.WriteLine("LastPassword=" + (LastPassword ?? ""));
                     sw.WriteLine("AutoConnect=" + (AutoConnect ? "1" : "0"));
+                    sw.WriteLine("FirstRunComplete=" + (FirstRunComplete ? "1" : "0"));
+                    sw.WriteLine("FirewallRulePorts=" + (FirewallRulePorts ?? ""));
+                    sw.WriteLine("UpnpAttempted=" + (UpnpAttempted ? "1" : "0"));
                 }
             }
             catch { }
