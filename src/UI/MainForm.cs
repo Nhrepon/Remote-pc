@@ -37,6 +37,11 @@ namespace RemotePC.UI
         private ListBox _lbHostLog;
         private Button _btnHostChat;
 
+        // Automation controls - Host tab
+        private GroupBox _gbHostAuto;
+        private CheckBox _chkAutoStartServer;
+        private CheckBox _chkTrayOnClose;
+
         private RemoteServer _server;
 
         #endregion
@@ -54,28 +59,48 @@ namespace RemotePC.UI
         private Label _lblGuideTitle;
         private RichTextBox _rtbGuide;
 
-        private readonly string _historyFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RemotePC_History.txt");
+        // Automation controls - Client tab
+        private GroupBox _gbDiscovery;
+        private ComboBox _cboDiscovered;
+        private Button _btnQuickConnect;
+        private CheckBox _chkAutoConnect;
+
+        private readonly string _historyFile = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "RemotePC_History.txt");
+
+        #endregion
+
+        #region Tray / Settings
+
+        private NotifyIcon _trayIcon;
+        private AppSettings _settings;
 
         #endregion
 
         public MainForm()
         {
             this.AutoScaleMode = AutoScaleMode.None;
+
+            _settings = AppSettings.Load();
+
             InitializeComponent();
+            InitializeTrayIcon();
             InitializeHostTab();
             InitializeClientTab();
             LoadIpHistory();
             GenerateRandomPin();
+            LoadSettingsIntoUI();
 
             this.Resize += MainForm_Resize;
-            this.Shown += delegate { UpdateResponsiveLayout(); };
+            this.Shown += MainForm_Shown;
         }
 
         private void InitializeComponent()
         {
             this.Text = "Remote PC - Work Across 2 PCs";
-            this.Size = new Size(760, 640);
-            this.MinimumSize = new Size(700, 580);
+            this.Size = new Size(760, 680);
+            this.MinimumSize = new Size(700, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9.5f);
             this.BackColor = Color.FromArgb(245, 247, 250);
@@ -87,16 +112,50 @@ namespace RemotePC.UI
 
             _tabHost = new TabPage("  Allow Remote Access (Host)  ");
             _tabHost.BackColor = Color.White;
-            _tabHost.AutoScroll = false;
+            _tabHost.AutoScroll = true;
             _tabControl.TabPages.Add(_tabHost);
 
             _tabClient = new TabPage("  Connect to Remote PC (Client)  ");
             _tabClient.BackColor = Color.White;
-            _tabClient.AutoScroll = false;
+            _tabClient.AutoScroll = true;
             _tabControl.TabPages.Add(_tabClient);
 
             this.Controls.Add(_tabControl);
         }
+
+        #region Tray Icon
+
+        private void InitializeTrayIcon()
+        {
+            _trayIcon = new NotifyIcon();
+            _trayIcon.Text = "Remote PC";
+            // Use a simple built-in icon if no custom icon is embedded
+            try { _trayIcon.Icon = this.Icon ?? SystemIcons.Application; }
+            catch { _trayIcon.Icon = SystemIcons.Application; }
+
+            ContextMenu trayMenu = new ContextMenu();
+            trayMenu.MenuItems.Add("Open Remote PC", delegate
+            {
+                this.Show();
+                this.WindowState = FormWindowState.Normal;
+                this.BringToFront();
+            });
+            trayMenu.MenuItems.Add("-");
+            trayMenu.MenuItems.Add("Exit", delegate
+            {
+                _trayIcon.Visible = false;
+                Application.Exit();
+            });
+            _trayIcon.ContextMenu = trayMenu;
+            _trayIcon.DoubleClick += delegate
+            {
+                this.Show();
+                this.WindowState = FormWindowState.Normal;
+                this.BringToFront();
+            };
+        }
+
+        #endregion
 
         #region Host Tab Setup
 
@@ -136,7 +195,7 @@ namespace RemotePC.UI
             _pnlHostStatus.Controls.Add(_lblHostStatusText);
             top += 46;
 
-            // 3. Network Configuration Card (TableLayoutPanel with AutoSize columns - immune to DPI overlap!)
+            // 3. Network Configuration Card
             _gbHostNetwork = new GroupBox();
             _gbHostNetwork.Text = " Connection Credentials & Address ";
             _gbHostNetwork.Location = new Point(20, top);
@@ -238,7 +297,56 @@ namespace RemotePC.UI
 
             top += 48;
 
-            // 5. Activity Log Header
+            // 5. Zero-Work Automation GroupBox
+            _gbHostAuto = new GroupBox();
+            _gbHostAuto.Text = " ⚡ Zero-Work Automation & Shortcuts ";
+            _gbHostAuto.Location = new Point(20, top);
+            _gbHostAuto.Size = new Size(690, 108);
+            _gbHostAuto.Padding = new Padding(12, 8, 12, 8);
+            _tabHost.Controls.Add(_gbHostAuto);
+
+            // Row 1: Options checkboxes
+            FlowLayoutPanel flowAutoOpts = new FlowLayoutPanel();
+            flowAutoOpts.Location = new Point(12, 22);
+            flowAutoOpts.Size = new Size(660, 32);
+            flowAutoOpts.FlowDirection = FlowDirection.LeftToRight;
+            flowAutoOpts.WrapContents = false;
+            _gbHostAuto.Controls.Add(flowAutoOpts);
+
+            _chkAutoStartServer = new CheckBox() { Text = "⚡ Auto-Start Server on Launch", AutoSize = true, Margin = new Padding(0, 4, 24, 0) };
+            _chkAutoStartServer.CheckedChanged += delegate { SaveSettingsFromUI(); };
+            flowAutoOpts.Controls.Add(_chkAutoStartServer);
+
+            _chkTrayOnClose = new CheckBox() { Text = "🔕 Minimize to Tray on Close", AutoSize = true, Margin = new Padding(0, 4, 0, 0) };
+            _chkTrayOnClose.CheckedChanged += delegate { SaveSettingsFromUI(); };
+            flowAutoOpts.Controls.Add(_chkTrayOnClose);
+
+            // Row 2: Shortcut buttons
+            FlowLayoutPanel flowShortcuts = new FlowLayoutPanel();
+            flowShortcuts.Location = new Point(12, 60);
+            flowShortcuts.Size = new Size(660, 38);
+            flowShortcuts.FlowDirection = FlowDirection.LeftToRight;
+            flowShortcuts.WrapContents = false;
+            _gbHostAuto.Controls.Add(flowShortcuts);
+
+            Button btnStartMenu = new Button() { Text = "📌 Add to Start Menu", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 10, 0) };
+            btnStartMenu.FlatStyle = FlatStyle.Flat;
+            btnStartMenu.Click += delegate { CreateShortcut("startmenu"); };
+            flowShortcuts.Controls.Add(btnStartMenu);
+
+            Button btnDesktop = new Button() { Text = "🖥 Desktop Shortcut", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 10, 0) };
+            btnDesktop.FlatStyle = FlatStyle.Flat;
+            btnDesktop.Click += delegate { CreateShortcut("desktop"); };
+            flowShortcuts.Controls.Add(btnDesktop);
+
+            Button btnStartup = new Button() { Text = "🚀 Start with Windows", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 0, 0) };
+            btnStartup.FlatStyle = FlatStyle.Flat;
+            btnStartup.Click += delegate { CreateShortcut("startup"); };
+            flowShortcuts.Controls.Add(btnStartup);
+
+            top += 118;
+
+            // 6. Activity Log Header
             _pnlLogHeader = new TableLayoutPanel();
             _pnlLogHeader.Location = new Point(20, top);
             _pnlLogHeader.Size = new Size(690, 32);
@@ -257,13 +365,53 @@ namespace RemotePC.UI
 
             top += 34;
 
-            // 6. Log Box
+            // 7. Log Box
             _lbHostLog = new ListBox();
             _lbHostLog.Location = new Point(20, top);
-            _lbHostLog.Size = new Size(690, 160);
+            _lbHostLog.Size = new Size(690, 130);
             _lbHostLog.Font = new Font("Consolas", 9.5f);
             _lbHostLog.IntegralHeight = false;
             _tabHost.Controls.Add(_lbHostLog);
+        }
+
+        private void CreateShortcut(string target)
+        {
+            try
+            {
+                string exePath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                bool ok = false;
+                string location = "";
+
+                if (target == "startmenu")
+                {
+                    ok = AppShortcutHelper.CreateStartMenuShortcut(exePath, "Remote PC", out location);
+                }
+                else if (target == "desktop")
+                {
+                    ok = AppShortcutHelper.CreateDesktopShortcut(exePath, "Remote PC", out location);
+                }
+                else if (target == "startup")
+                {
+                    ok = AppShortcutHelper.CreateStartupShortcut(exePath, "Remote PC", out location);
+                }
+
+                if (ok)
+                {
+                    MessageBox.Show(
+                        "Shortcut created successfully!\n\nLocation: " + location,
+                        "Shortcut Created", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        "Could not create shortcut. Please create it manually.",
+                        "Shortcut Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error creating shortcut: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void RefreshHostIps()
@@ -294,7 +442,8 @@ namespace RemotePC.UI
                 if (info != null)
                 {
                     Clipboard.SetText(info.IpAddress);
-                    MessageBox.Show(string.Format("Copied IP '{0}' to clipboard!\n\nType this IP into PC 2 to connect.", info.IpAddress),
+                    MessageBox.Show(
+                        string.Format("Copied IP '{0}' to clipboard!\n\nType this IP into PC 2 to connect.", info.IpAddress),
                         "IP Address Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             }
@@ -325,6 +474,17 @@ namespace RemotePC.UI
                     _numHostPort.Enabled = false;
                     _txtHostPassword.Enabled = false;
                     _btnGenPin.Enabled = false;
+
+                    // Start LAN broadcasting so other PCs can discover us
+                    try { NetworkDiscovery.StartBroadcasting(port, _txtHostPassword.Text.Trim()); }
+                    catch { }
+
+                    // Try UPnP port forward in background (non-blocking)
+                    System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                    {
+                        try { UPnPPortForwarder.ForwardPortAsync(port); }
+                        catch { }
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -341,6 +501,9 @@ namespace RemotePC.UI
                 _txtHostPassword.Enabled = true;
                 _btnGenPin.Enabled = true;
                 _btnHostChat.Enabled = false;
+
+                try { NetworkDiscovery.StopBroadcasting(); }
+                catch { }
             }
         }
 
@@ -375,6 +538,18 @@ namespace RemotePC.UI
             _lblHostStatusIndicator.ForeColor = Color.FromArgb(0, 122, 204);
             _lblHostStatusText.Text = string.Format("Active Session: Client '{0}' ({1}) connected!", session.ClientName, session.ClientEndPoint);
             _btnHostChat.Enabled = true;
+
+            // Tray balloon notification
+            if (_chkTrayOnClose != null && _chkTrayOnClose.Checked && _trayIcon != null)
+            {
+                try
+                {
+                    _trayIcon.BalloonTipTitle = "Remote PC";
+                    _trayIcon.BalloonTipText = string.Format("Client '{0}' connected!", session.ClientName);
+                    _trayIcon.ShowBalloonTip(3000);
+                }
+                catch { }
+            }
         }
 
         private void Server_OnClientDisconnected(ServerSession session)
@@ -428,7 +603,71 @@ namespace RemotePC.UI
             _tabClient.Controls.Add(lblTitle);
             top += 35;
 
-            // 2. Connection Details GroupBox (TableLayoutPanel with AutoSize columns - immune to DPI overlap!)
+            // 2. LAN Auto-Discovery GroupBox
+            _gbDiscovery = new GroupBox();
+            _gbDiscovery.Text = " 🔍 LAN Auto-Discovery (Same Network) ";
+            _gbDiscovery.Location = new Point(20, top);
+            _gbDiscovery.Size = new Size(690, 70);
+            _gbDiscovery.Padding = new Padding(12, 8, 12, 8);
+            _tabClient.Controls.Add(_gbDiscovery);
+
+            FlowLayoutPanel flowDisc = new FlowLayoutPanel();
+            flowDisc.Dock = DockStyle.Fill;
+            flowDisc.FlowDirection = FlowDirection.LeftToRight;
+            flowDisc.WrapContents = false;
+            _gbDiscovery.Controls.Add(flowDisc);
+
+            Label lblDisc = new Label() { Text = "Discovered PCs:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) };
+            flowDisc.Controls.Add(lblDisc);
+
+            _cboDiscovered = new ComboBox();
+            _cboDiscovered.Width = 340;
+            _cboDiscovered.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cboDiscovered.Margin = new Padding(0, 4, 8, 0);
+            flowDisc.Controls.Add(_cboDiscovered);
+
+            _btnQuickConnect = new Button();
+            _btnQuickConnect.Text = "⚡ Quick Connect";
+            _btnQuickConnect.AutoSize = true;
+            _btnQuickConnect.Height = 28;
+            _btnQuickConnect.Margin = new Padding(0, 4, 0, 0);
+            _btnQuickConnect.FlatStyle = FlatStyle.Flat;
+            _btnQuickConnect.BackColor = Color.FromArgb(0, 122, 204);
+            _btnQuickConnect.ForeColor = Color.White;
+            _btnQuickConnect.FlatAppearance.BorderSize = 0;
+            _btnQuickConnect.Click += BtnQuickConnect_Click;
+            flowDisc.Controls.Add(_btnQuickConnect);
+
+            top += 80;
+
+            // Start listening for discoveries
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    NetworkDiscovery.StartListening(delegate(DiscoveredHost host)
+                    {
+                        if (this.IsDisposed) return;
+                        try
+                        {
+                            this.BeginInvoke(new Action(delegate
+                            {
+                                string entry = string.Format("{0} ({1}:{2})", host.MachineName, host.IpAddress, host.Port);
+                                if (!_cboDiscovered.Items.Contains(entry))
+                                {
+                                    _cboDiscovered.Items.Add(entry);
+                                    if (_cboDiscovered.Items.Count == 1)
+                                        _cboDiscovered.SelectedIndex = 0;
+                                }
+                            }));
+                        }
+                        catch { }
+                    });
+                }
+                catch { }
+            });
+
+            // 3. Connection Details GroupBox
             _gbClientConnect = new GroupBox();
             _gbClientConnect.Text = " Remote Host Connection Details ";
             _gbClientConnect.Location = new Point(20, top);
@@ -513,36 +752,72 @@ namespace RemotePC.UI
 
             top += 178;
 
-            // 3. Connection Guide
+            // 4. Auto-Connect option
+            FlowLayoutPanel flowClientOpts = new FlowLayoutPanel();
+            flowClientOpts.Location = new Point(20, top);
+            flowClientOpts.Size = new Size(690, 32);
+            flowClientOpts.FlowDirection = FlowDirection.LeftToRight;
+            _tabClient.Controls.Add(flowClientOpts);
+
+            _chkAutoConnect = new CheckBox() { Text = "⚡ Auto-Connect on App Start", AutoSize = true, Margin = new Padding(0, 4, 20, 0) };
+            _chkAutoConnect.CheckedChanged += delegate { SaveSettingsFromUI(); };
+            flowClientOpts.Controls.Add(_chkAutoConnect);
+
+            Button btnAddStartMenu = new Button() { Text = "📌 Add to Start Menu", AutoSize = true, Height = 28, Margin = new Padding(0, 2, 0, 0) };
+            btnAddStartMenu.FlatStyle = FlatStyle.Flat;
+            btnAddStartMenu.Click += delegate { CreateShortcut("startmenu"); };
+            flowClientOpts.Controls.Add(btnAddStartMenu);
+
+            top += 42;
+
+            // 5. Connection Guide
             _lblGuideTitle = new Label() { Text = "Quick 2-PC Setup Guide:", Location = new Point(20, top), AutoSize = true, Font = new Font("Segoe UI", 10f, FontStyle.Bold) };
             _tabClient.Controls.Add(_lblGuideTitle);
             top += 26;
 
             _rtbGuide = new RichTextBox();
             _rtbGuide.Location = new Point(20, top);
-            _rtbGuide.Size = new Size(690, 220);
+            _rtbGuide.Size = new Size(690, 180);
             _rtbGuide.ReadOnly = true;
             _rtbGuide.BackColor = Color.FromArgb(248, 249, 251);
             _rtbGuide.BorderStyle = BorderStyle.FixedSingle;
             _rtbGuide.Font = new Font("Segoe UI", 9.5f);
             _rtbGuide.Text =
                 "HOW TO CONNECT YOUR 2 PCS:\n\n" +
-                "1. ON PC 1 (The PC to control/host):\n" +
-                "   • Run RemotePC.exe and stay on the 'Allow Remote Access' tab.\n" +
-                "   • Look at 'This PC's IPv4 Address' (e.g. 192.168.1.105) and note down the Security PIN.\n" +
-                "   • Click the green 'Start Server' button.\n\n" +
-                "2. ON PC 2 (The PC you are working from):\n" +
-                "   • Run RemotePC.exe and switch to this 'Connect to Remote PC' tab.\n" +
-                "   • Enter the IP address and PIN from PC 1.\n" +
-                "   • Click 'Connect to Remote PC'!\n" +
-                "   • The Remote Desktop window will open with live screen, full mouse & keyboard control,\n" +
-                "     file transfer, clipboard sync, and chat!\n\n" +
-                "NETWORK TIPS:\n" +
-                "• Same Wi-Fi / LAN: Direct connection works instantly out-of-the-box.\n" +
-                "• Windows Firewall: If prompted, check 'Allow access on Private networks'.\n" +
-                "• Over Internet (Different networks): Install free Tailscale or ZeroTier on both PCs,\n" +
-                "  or forward port 8888 on your router.";
+                "SAME NETWORK (Home/Office Wi-Fi):\n" +
+                "  PC 1 (Host): Run RemotePC.exe → 'Allow Remote Access' tab → Start Server\n" +
+                "  PC 2 (Client): Run RemotePC.exe → 'Connect to Remote PC' tab → pick IP from dropdown OR type it in\n\n" +
+                "DIFFERENT NETWORKS (Home ↔ Office):\n" +
+                "  Option A: Install free Tailscale on both PCs → use the 100.x.x.x IP shown in this app (★ marked)\n" +
+                "  Option B: This app auto-tries UPnP port forwarding on your router (no manual config needed)\n" +
+                "  Option C: Forward TCP port 8888 manually on your router → use your public IP\n\n" +
+                "TIPS: Windows Firewall → Allow RemotePC on Private networks when prompted.\n" +
+                "Settings are auto-saved between sessions. Shortcuts: use the 'Zero-Work Automation' buttons on the Host tab.";
             _tabClient.Controls.Add(_rtbGuide);
+        }
+
+        private void BtnQuickConnect_Click(object sender, EventArgs e)
+        {
+            if (_cboDiscovered.SelectedItem == null) return;
+
+            string entry = _cboDiscovered.SelectedItem.ToString();
+            // Parse "MachineName (IP:Port)"
+            int parenOpen = entry.LastIndexOf('(');
+            int parenClose = entry.LastIndexOf(')');
+            if (parenOpen < 0 || parenClose < 0) return;
+
+            string ipPort = entry.Substring(parenOpen + 1, parenClose - parenOpen - 1);
+            string[] parts = ipPort.Split(':');
+            if (parts.Length != 2) return;
+
+            _cboClientIp.Text = parts[0].Trim();
+            int port;
+            if (int.TryParse(parts[1].Trim(), out port))
+                _numClientPort.Value = Math.Max(1024, Math.Min(65535, port));
+
+            // Switch to connection group and trigger connect
+            _tabControl.SelectedTab = _tabClient;
+            BtnConnect_Click(sender, e);
         }
 
         private void BtnConnect_Click(object sender, EventArgs e)
@@ -562,7 +837,6 @@ namespace RemotePC.UI
 
             RemoteClient client = new RemoteClient();
 
-            // Run connection on background thread to keep UI completely responsive
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 bool ok = client.Connect(host, port, pass, 5000);
@@ -575,13 +849,16 @@ namespace RemotePC.UI
                     if (ok)
                     {
                         SaveIpHistory(host);
+                        SaveSettingsFromUI();
                         ViewerForm vf = new ViewerForm(client);
                         vf.Show();
                     }
                     else
                     {
                         MessageBox.Show(
-                            string.Format("Could not connect to {0}:{1}.\n\nEnsure:\n1. Server is running on PC 1.\n2. Both PCs are on the same Wi-Fi/network or VPN.\n3. The IP address and PIN are correct.\n4. Windows Firewall is not blocking port {1}.", host, port),
+                            string.Format(
+                                "Could not connect to {0}:{1}.\n\nEnsure:\n1. Server is running on PC 1.\n2. Both PCs are on the same Wi-Fi/network, or use Tailscale (100.x.x.x IP).\n3. The IP address and PIN are correct.\n4. Windows Firewall is not blocking port {1}.",
+                                host, port),
                             "Connection Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }));
@@ -607,14 +884,17 @@ namespace RemotePC.UI
             }
             catch { }
 
+            // Also populate from saved LastHost setting
+            if (!string.IsNullOrEmpty(_settings.LastHost))
+            {
+                if (!_cboClientIp.Items.Contains(_settings.LastHost))
+                    _cboClientIp.Items.Insert(0, _settings.LastHost);
+            }
+
             if (_cboClientIp.Items.Count > 0)
-            {
                 _cboClientIp.SelectedIndex = 0;
-            }
             else
-            {
                 _cboClientIp.Text = "192.168.1.";
-            }
         }
 
         private void SaveIpHistory(string newIp)
@@ -631,7 +911,7 @@ namespace RemotePC.UI
                     {
                         ips.Add(existing);
                     }
-                    if (ips.Count >= 10) break; // Keep last 10
+                    if (ips.Count >= 10) break;
                 }
 
                 File.WriteAllLines(_historyFile, ips.ToArray());
@@ -643,6 +923,58 @@ namespace RemotePC.UI
                 }
             }
             catch { }
+        }
+
+        #endregion
+
+        #region Settings Persistence
+
+        private void LoadSettingsIntoUI()
+        {
+            if (_settings == null) return;
+
+            // Port
+            if (_settings.ServerPort >= 1024 && _settings.ServerPort <= 65535)
+            {
+                _numHostPort.Value = _settings.ServerPort;
+                _numClientPort.Value = _settings.ServerPort;
+            }
+
+            // Password
+            if (!string.IsNullOrEmpty(_settings.Password))
+                _txtHostPassword.Text = _settings.Password;
+
+            // Checkboxes
+            _chkAllowControl.Checked = _settings.AllowControl;
+            _chkAllowFiles.Checked = _settings.AllowFileTransfer;
+            _chkAutoStartServer.Checked = _settings.AutoStartServer;
+            _chkTrayOnClose.Checked = _settings.MinimizeToTray;
+            _chkAutoConnect.Checked = _settings.AutoConnect;
+
+            // Last client IP
+            if (!string.IsNullOrEmpty(_settings.LastHost))
+                _cboClientIp.Text = _settings.LastHost;
+
+            // Last client password
+            if (!string.IsNullOrEmpty(_settings.LastPassword))
+                _txtClientPassword.Text = _settings.LastPassword;
+        }
+
+        private void SaveSettingsFromUI()
+        {
+            if (_settings == null) return;
+
+            _settings.ServerPort = (int)_numHostPort.Value;
+            _settings.Password = _txtHostPassword.Text.Trim();
+            _settings.AllowControl = _chkAllowControl.Checked;
+            _settings.AllowFileTransfer = _chkAllowFiles.Checked;
+            _settings.AutoStartServer = _chkAutoStartServer.Checked;
+            _settings.MinimizeToTray = _chkTrayOnClose.Checked;
+            _settings.AutoConnect = _chkAutoConnect.Checked;
+            _settings.LastHost = _cboClientIp.Text.Trim();
+            _settings.LastPassword = _txtClientPassword.Text.Trim();
+
+            _settings.Save();
         }
 
         #endregion
@@ -668,6 +1000,7 @@ namespace RemotePC.UI
                 if (_pnlHostStatus != null) _pnlHostStatus.Width = cardW;
                 if (_gbHostNetwork != null) _gbHostNetwork.Width = cardW;
                 if (_pnlHostActions != null) _pnlHostActions.Width = cardW;
+                if (_gbHostAuto != null) _gbHostAuto.Width = cardW;
                 if (_pnlLogHeader != null) _pnlLogHeader.Width = cardW;
 
                 if (_tlpHostNetwork != null && _cboHostIps != null)
@@ -692,6 +1025,7 @@ namespace RemotePC.UI
             {
                 int cardW = Math.Max(200, clientW - 40);
 
+                if (_gbDiscovery != null) _gbDiscovery.Width = cardW;
                 if (_gbClientConnect != null) _gbClientConnect.Width = cardW;
 
                 if (_rtbGuide != null)
@@ -705,12 +1039,90 @@ namespace RemotePC.UI
 
         #endregion
 
+        #region Form Shown / Auto-Start
+
+        private void MainForm_Shown(object sender, EventArgs e)
+        {
+            UpdateResponsiveLayout();
+
+            // Handle -minimized arg
+            string[] args = Environment.GetCommandLineArgs();
+            bool startMinimized = false;
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (string.Equals(args[i], "-minimized", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(args[i], "--minimized", StringComparison.OrdinalIgnoreCase))
+                {
+                    startMinimized = true;
+                    break;
+                }
+            }
+
+            if (startMinimized && _chkTrayOnClose != null && _chkTrayOnClose.Checked)
+            {
+                this.Hide();
+                _trayIcon.Visible = true;
+                return;
+            }
+
+            // Auto-Start Server
+            if (_settings != null && _settings.AutoStartServer)
+            {
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    System.Threading.Thread.Sleep(300);
+                    if (!this.IsDisposed)
+                        this.BeginInvoke(new Action(delegate { BtnToggleServer_Click(null, EventArgs.Empty); }));
+                });
+            }
+
+            // Auto-Connect (client)
+            if (_settings != null && _settings.AutoConnect && !string.IsNullOrEmpty(_settings.LastHost))
+            {
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    System.Threading.Thread.Sleep(600);
+                    if (!this.IsDisposed)
+                        this.BeginInvoke(new Action(delegate
+                        {
+                            _tabControl.SelectedTab = _tabClient;
+                            BtnConnect_Click(null, EventArgs.Empty);
+                        }));
+                });
+            }
+        }
+
+        #endregion
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (_server != null && _server.IsRunning)
+            // If Minimize to Tray is enabled and user closed the window (not exiting from tray)
+            if (_chkTrayOnClose != null && _chkTrayOnClose.Checked &&
+                e.CloseReason == CloseReason.UserClosing)
             {
-                _server.Stop();
+                e.Cancel = true;
+                this.Hide();
+                _trayIcon.Visible = true;
+                _trayIcon.BalloonTipTitle = "Remote PC";
+                _trayIcon.BalloonTipText = "Still running in the background. Double-click to restore.";
+                try { _trayIcon.ShowBalloonTip(2500); } catch { }
+                return;
             }
+
+            SaveSettingsFromUI();
+
+            if (_server != null && _server.IsRunning)
+                _server.Stop();
+
+            try { NetworkDiscovery.StopBroadcasting(); } catch { }
+            try { NetworkDiscovery.StopListening(); } catch { }
+
+            if (_trayIcon != null)
+            {
+                _trayIcon.Visible = false;
+                _trayIcon.Dispose();
+            }
+
             base.OnFormClosing(e);
         }
     }

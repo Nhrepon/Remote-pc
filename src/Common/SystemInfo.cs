@@ -44,10 +44,21 @@ namespace RemotePC.Common
                         if (addr.Address.AddressFamily == AddressFamily.InterNetwork)
                         {
                             NetworkAdapterInfo info = new NetworkAdapterInfo();
-                            info.Name = ni.Name;
+                            string ipStr = addr.Address.ToString();
+                            bool isTailscale = ipStr.StartsWith("100.") || ni.Description.IndexOf("Tailscale", StringComparison.OrdinalIgnoreCase) >= 0 || ni.Name.IndexOf("Tailscale", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                            info.Name = isTailscale ? ("★ " + ni.Name + " (Internet/Tailscale)") : ni.Name;
                             info.Description = ni.Description;
-                            info.IpAddress = addr.Address.ToString();
-                            list.Add(info);
+                            info.IpAddress = ipStr;
+
+                            if (isTailscale)
+                            {
+                                list.Insert(0, info); // Place Tailscale right at the top
+                            }
+                            else
+                            {
+                                list.Add(info);
+                            }
                         }
                     }
                 }
