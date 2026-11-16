@@ -423,6 +423,12 @@ namespace RemotePC.Client
             Protocol.SendPacket(_stream, _writeLock, PacketType.QualityChange, payload);
         }
 
+        public void SendDisplayChange(byte mode)
+        {
+            if (!_isConnected) return;
+            Protocol.SendPacket(_stream, _writeLock, PacketType.DisplayChange, new byte[] { mode });
+        }
+
         public void SendClipboard(string text)
         {
             if (!_isConnected || string.IsNullOrEmpty(text)) return;

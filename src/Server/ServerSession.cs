@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
@@ -283,6 +284,17 @@ namespace RemotePC.Server
                     }
                     break;
 
+                case PacketType.DisplayChange:
+                    if (payload != null && payload.Length >= 1)
+                    {
+                        byte dMode = payload[0];
+                        if (_capturer != null)
+                        {
+                            _capturer.CaptureMode = (ScreenCaptureMode)dMode;
+                        }
+                    }
+                    break;
+
                 case PacketType.Ping:
                     Protocol.SendPacket(_stream, _writeLock, PacketType.Pong, null);
                     break;
@@ -335,10 +347,9 @@ namespace RemotePC.Server
 
         private void ScreenStreamLoop()
         {
-            ScreenCapturer capturer = null;
             try
             {
-                capturer = new ScreenCapturer(true);
+                _capturer = new ScreenCapturer(true, ScreenCaptureMode.PrimaryDisplay);
                 while (_isRunning && _isAuthenticated)
                 {
                     // Flow control: if client is more than 2 frames behind, skip capture to avoid lag
@@ -349,12 +360,12 @@ namespace RemotePC.Server
                     }
 
                     int quality = _streamQuality;
-                    byte[] jpeg = capturer.CaptureJpeg(quality);
+                    byte[] jpeg = _capturer.CaptureJpeg(quality);
 
                     if (jpeg != null && jpeg.Length > 0 && _isRunning)
                     {
                         _currentFrameId++;
-                        byte[] framePayload = Protocol.SerializeScreenFrame(_currentFrameId, capturer.ScreenWidth, capturer.ScreenHeight, jpeg);
+                        byte[] framePayload = Protocol.SerializeScreenFrame(_currentFrameId, _capturer.ScreenWidth, _capturer.ScreenHeight, jpeg);
                         Protocol.SendPacket(_stream, _writeLock, PacketType.ScreenFrame, framePayload);
                     }
 
@@ -368,9 +379,10 @@ namespace RemotePC.Server
             }
             finally
             {
-                if (capturer != null)
+                if (_capturer != null)
                 {
-                    capturer.Dispose();
+                    _capturer.Dispose();
+                    _capturer = null;
                 }
             }
         }

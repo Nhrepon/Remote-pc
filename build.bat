@@ -20,7 +20,7 @@ if not exist "bin\Release" (
 )
 
 echo Compiling C# source code...
-"%CSC%" /target:winexe /platform:anycpu /optimize+ /out:bin\Release\RemotePC.exe src\Common\*.cs src\Server\*.cs src\Client\*.cs src\UI\*.cs src\Program.cs /r:System.dll,System.Drawing.dll,System.Windows.Forms.dll
+"%CSC%" /target:winexe /platform:anycpu /optimize+ /win32manifest:app.manifest /out:bin\Release\RemotePC.exe src\Common\*.cs src\Server\*.cs src\Client\*.cs src\UI\*.cs src\Program.cs /r:System.dll,System.Drawing.dll,System.Windows.Forms.dll
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Compilation failed!

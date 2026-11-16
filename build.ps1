@@ -32,6 +32,7 @@ $args = @(
     "/target:winexe",
     "/platform:anycpu",
     "/optimize+",
+    "/win32manifest:app.manifest",
     "/out:bin\Release\RemotePC.exe",
     "/r:System.dll,System.Drawing.dll,System.Windows.Forms.dll"
 ) + $sources

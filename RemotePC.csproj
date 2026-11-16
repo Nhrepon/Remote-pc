@@ -12,6 +12,7 @@
     <FileAlignment>512</FileAlignment>
     <OutputPath>bin\Release\</OutputPath>
     <DoNotCopyLocalIfInGac>true</DoNotCopyLocalIfInGac>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>

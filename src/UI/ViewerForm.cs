@@ -22,6 +22,7 @@ namespace RemotePC.UI
         private Panel _toolbar;
         private RemoteCanvas _canvas;
         private Label _lblInfo;
+        private ComboBox _cboDisplay;
         private ComboBox _cboQuality;
         private ComboBox _cboViewMode;
         private CheckBox _chkControl;
@@ -185,6 +186,21 @@ namespace RemotePC.UI
             _cboViewMode.SelectedIndexChanged += CboViewMode_SelectedIndexChanged;
             _toolbar.Controls.Add(_cboViewMode);
             rightX -= 110;
+
+            // Display Monitor Dropdown
+            _cboDisplay = new ComboBox();
+            _cboDisplay.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cboDisplay.Items.AddRange(new object[] { "Primary Display", "All Displays" });
+            _cboDisplay.SelectedIndex = 0;
+            _cboDisplay.Location = new Point(rightX - 120, 7);
+            _cboDisplay.Size = new Size(115, 25);
+            _cboDisplay.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _cboDisplay.SelectedIndexChanged += delegate
+            {
+                _client.SendDisplayChange((byte)_cboDisplay.SelectedIndex);
+            };
+            _toolbar.Controls.Add(_cboDisplay);
+            rightX -= 125;
 
             // Control CheckBox
             _chkControl = new CheckBox();
@@ -625,7 +641,9 @@ namespace RemotePC.UI
             }
             else // Original 1:1
             {
-                _drawnImageRect = new Rectangle(0, 0, w, h);
+                int dx = (this.Width - w) / 2;
+                int dy = (this.Height - h) / 2;
+                _drawnImageRect = new Rectangle(dx > 0 ? dx : 0, dy > 0 ? dy : 0, w, h);
                 g.DrawImage(bmpToDraw, _drawnImageRect);
             }
         }
