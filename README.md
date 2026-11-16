@@ -72,7 +72,7 @@ Nothing else has to be installed or configured by hand.
 ### Step 3: On PC 2 (The PC You Are Sitting At)
 1. Double-click `RemotePC.exe`.
 2. Switch to the **"Connect to Remote PC (Client)"** tab.
-3. Paste the code from PC 1 into **"Remote PC IP Address"** (the port and PIN fill in automatically), or type the IP and PIN separately.
+3. Paste the code from PC 1 into **"Remote PC Address"** (the port and PIN fill in automatically), or type the IP and PIN separately.
 4. Click **"Connect to Remote PC"**.
 
 🎉 The **Remote Desktop Viewer** window will open immediately with live screen viewing, responsive mouse & keyboard control, file management, and chat!
@@ -99,7 +99,7 @@ On the host, click **"Copy Code"**. It copies one line like:
 RPC1|203.0.113.25|8888|1234567890
 ```
 
-On the client, paste it into **"Remote PC IP Address"** and click **Connect**. The port and
+On the client, paste it into **"Remote PC Address"** and click **Connect**. The port and
 PIN fields are filled in automatically. Addresses marked **★** are the ones that work across
 networks (automatic router mapping, IPv6, or Tailscale).
 
@@ -143,7 +143,7 @@ and prefer Tailscale on networks you do not control.
 
 The app opens the firewall itself on first run — you should only ever see a single **"Do you want to allow this app to make changes?"** prompt. Click **Yes** and you are done.
 
-If you clicked *No* (or are behind a restrictive policy), click **🛡 Auto-Configure Firewall** in the *Zero-Work Automation* box on the Host tab to retry. The status line under the buttons reports whether the ports are open.
+If you clicked *No* (or are behind a restrictive policy), click **🛡 Fix Firewall** in the *Zero-Work Automation* box on the Host tab to retry. The status line under the buttons reports whether the ports are open.
 
 What it creates (all inbound, all profiles):
 

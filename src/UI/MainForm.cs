@@ -71,6 +71,14 @@ namespace RemotePC.UI
         private Button _btnQuickConnect;
         private CheckBox _chkAutoConnect;
 
+        // Captions measured by UpdateResponsiveLayout so fields can shrink to fit narrow screens.
+        private Label _lblDiscoveryCaption;
+        private Label _lblClientIpCaption;
+        private Label _lblClientPortCaption;
+
+        // Direct tab-page child whose width has to follow the window (it is not a group box).
+        private FlowLayoutPanel _flowClientOpts;
+
         private readonly string _historyFile = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "RemotePC_History.txt");
@@ -154,6 +162,9 @@ namespace RemotePC.UI
             _tabControl.Dock = DockStyle.Fill;
             _tabControl.Font = new Font("Segoe UI", 10f, FontStyle.Regular);
             _tabControl.Padding = new Point(16, 8);
+            // Let the two long tab captions wrap onto a second row on a narrow/high-DPI
+            // laptop instead of being cut off with the scroll arrows.
+            _tabControl.Multiline = true;
 
             _tabHost = new TabPage("  Allow Remote Access (Host)  ");
             _tabHost.BackColor = Color.White;
@@ -273,7 +284,7 @@ namespace RemotePC.UI
             _tlpHostNetwork.Controls.Add(lblIp, 0, 0);
 
             FlowLayoutPanel flowIp = new FlowLayoutPanel() { AutoSize = false, Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 5, 0, 0) };
-            _cboHostIps = new ComboBox() { Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
+            _cboHostIps = new ComboBox() { Width = 300, DropDownStyle = ComboBoxStyle.DropDownList, DropDownWidth = 460 };
             RefreshHostIps();
             flowIp.Controls.Add(_cboHostIps);
 
@@ -387,12 +398,12 @@ namespace RemotePC.UI
             flowShortcuts.WrapContents = false;
             _gbHostAuto.Controls.Add(flowShortcuts);
 
-            Button btnStartMenu = new Button() { Text = "📌 Add to Start Menu", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 10, 0) };
+            Button btnStartMenu = new Button() { Text = "📌 Start Menu", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 10, 0) };
             btnStartMenu.FlatStyle = FlatStyle.Flat;
             btnStartMenu.Click += delegate { CreateShortcut("startmenu"); };
             flowShortcuts.Controls.Add(btnStartMenu);
 
-            Button btnDesktop = new Button() { Text = "🖥 Desktop Shortcut", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 10, 0) };
+            Button btnDesktop = new Button() { Text = "🖥 Desktop", AutoSize = true, Height = 30, Margin = new Padding(0, 0, 10, 0) };
             btnDesktop.FlatStyle = FlatStyle.Flat;
             btnDesktop.Click += delegate { CreateShortcut("desktop"); };
             flowShortcuts.Controls.Add(btnDesktop);
@@ -402,7 +413,7 @@ namespace RemotePC.UI
             btnStartup.Click += delegate { CreateShortcut("startup"); };
             flowShortcuts.Controls.Add(btnStartup);
 
-            Button btnFirewall = new Button() { Text = "🛡 Auto-Configure Firewall", AutoSize = true, Height = 30, Margin = new Padding(0) };
+            Button btnFirewall = new Button() { Text = "🛡 Fix Firewall", AutoSize = true, Height = 30, Margin = new Padding(0) };
             btnFirewall.FlatStyle = FlatStyle.Flat;
             btnFirewall.Click += delegate { FixFirewallNow(); };
             flowShortcuts.Controls.Add(btnFirewall);
@@ -582,7 +593,7 @@ namespace RemotePC.UI
 
         /// <summary>
         /// Copies address + port + PIN in one string. The other PC can paste it straight into
-        /// the "Remote PC IP Address" box; the port and PIN fields are filled automatically.
+        /// the "Remote PC Address" box; the port and PIN fields are filled automatically.
         /// This is what makes an IPv6 address or a changed public IP painless to send.
         /// </summary>
         private void BtnCopyCode_Click(object sender, EventArgs e)
@@ -604,7 +615,7 @@ namespace RemotePC.UI
 
             MessageBox.Show(
                 "Connection code copied to the clipboard:\n\n" + code +
-                "\n\nOn the other PC: open RemotePC, paste it into the 'Remote PC IP Address' box and click Connect. " +
+                "\n\nOn the other PC: open RemotePC, paste it into the 'Remote PC Address' box and click Connect. " +
                 "The port and PIN are filled in automatically.",
                 "Connection Code Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
@@ -1165,6 +1176,7 @@ namespace RemotePC.UI
             _gbDiscovery.Controls.Add(flowDisc);
 
             Label lblDisc = new Label() { Text = "Discovered PCs:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) };
+            _lblDiscoveryCaption = lblDisc;
             flowDisc.Controls.Add(lblDisc);
 
             _cboDiscovered = new ComboBox();
@@ -1234,7 +1246,8 @@ namespace RemotePC.UI
             _gbClientConnect.Controls.Add(_tlpClientConnect);
 
             // Row 0: IP + Port
-            Label lblIp = new Label() { Text = "Remote PC IP Address:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            Label lblIp = new Label() { Text = "Remote PC Address:", AutoSize = true, Margin = new Padding(0, 8, 12, 0) };
+            _lblClientIpCaption = lblIp;
             _tlpClientConnect.Controls.Add(lblIp, 0, 0);
 
             FlowLayoutPanel flowIpPort = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
@@ -1242,6 +1255,7 @@ namespace RemotePC.UI
             flowIpPort.Controls.Add(_cboClientIp);
 
             Label lblPort = new Label() { Text = "Port:", AutoSize = true, Margin = new Padding(15, 6, 6, 0) };
+            _lblClientPortCaption = lblPort;
             flowIpPort.Controls.Add(lblPort);
 
             _numClientPort = new NumericUpDown() { Width = 90, Minimum = 1024, Maximum = 65535, Value = 8888 };
@@ -1249,7 +1263,7 @@ namespace RemotePC.UI
             _tlpClientConnect.Controls.Add(flowIpPort, 1, 0);
 
             // Row 1: Access PIN
-            Label lblPass = new Label() { Text = "Access PIN / Password:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            Label lblPass = new Label() { Text = "PIN / Password:", AutoSize = true, Margin = new Padding(0, 8, 12, 0) };
             _tlpClientConnect.Controls.Add(lblPass, 0, 1);
 
             FlowLayoutPanel flowPass = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
@@ -1301,6 +1315,7 @@ namespace RemotePC.UI
 
             // 4. Auto-Connect option
             FlowLayoutPanel flowClientOpts = new FlowLayoutPanel();
+            _flowClientOpts = flowClientOpts;
             flowClientOpts.Location = new Point(20, top);
             flowClientOpts.Size = new Size(690, 32);
             flowClientOpts.FlowDirection = FlowDirection.LeftToRight;
@@ -1336,7 +1351,7 @@ namespace RemotePC.UI
                 "  PC 2 (Client): pick the PC from 'Discovered PCs' → Quick Connect\n\n" +
                 "DIFFERENT NETWORKS - ZERO CONFIG ON THE HOST:\n" +
                 "  1. PC 1: Start Server, then click 'Copy Code' (copies address + port + PIN).\n" +
-                "  2. PC 2: paste the code into 'Remote PC IP Address' and click Connect.\n" +
+                "  2. PC 2: paste the code into 'Remote PC Address' and click Connect.\n" +
                 "     The port and PIN fields fill themselves in.\n" +
                 "  The host automatically re-opens Windows Firewall, restarts discovery and\n" +
                 "  recreates its router port mapping every time it joins a new Wi-Fi/hotspot.\n\n" +
@@ -1433,18 +1448,52 @@ namespace RemotePC.UI
                     }
                     else
                     {
+                        string hint = BuildAddressHint(host);
                         string detail = string.IsNullOrEmpty(client.LastError)
                             ? ""
                             : "\n\nDetails: " + client.LastError;
 
                         MessageBox.Show(
                             string.Format(
-                                "Could not connect to {0}.\n\nEnsure:\n1. The server is running on the other PC (green status).\n2. If you are on different networks, ask for a fresh connection code - the host's address changes when it switches Wi-Fi.\n3. Hotel/cafe/public Wi-Fi usually blocks inbound connections; use Tailscale or a home/office network.\n4. The PIN is correct (the host may have generated a new one).{1}",
-                                ConnectionCode.FormatEndpoint(host, port), detail),
+                                "Could not connect to {0}.{1}\n\nEnsure:\n1. The server is running on the other PC (green status).\n2. If you are on different networks, ask for a fresh connection code - the host's address changes when it switches Wi-Fi.\n3. Hotel/cafe/public Wi-Fi usually blocks inbound connections; use Tailscale or a home/office network.\n4. The PIN is correct (the host may have generated a new one).{2}",
+                                ConnectionCode.FormatEndpoint(host, port), hint, detail),
                             "Connection Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }));
             });
+        }
+
+        /// <summary>
+        /// Explains the most common cross-network mistake: dialling the host's private LAN
+        /// address (192.168.x.x, 10.x.x.x, 172.16-31.x.x) from a different network. Returns an
+        /// empty string for host names and public addresses.
+        /// </summary>
+        private static string BuildAddressHint(string host)
+        {
+            System.Net.IPAddress address;
+            if (!System.Net.IPAddress.TryParse(host, out address)) return "";
+            if (!PublicIpResolver.IsPrivateOrShared(address)) return "";
+
+            if (System.Net.IPAddress.IsLoopback(address))
+            {
+                return "\n\n" + host + " is this PC's own loopback address. Enter the other PC's address instead.";
+            }
+
+            byte[] bytes = address.GetAddressBytes();
+            bool carrierGradeNat =
+                address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                && bytes.Length == 4 && bytes[0] == 100 && bytes[1] >= 64 && bytes[1] <= 127;
+
+            if (carrierGradeNat)
+            {
+                return "\n\n" + host + " is a carrier-grade NAT (100.64.x.x) address, which cannot be reached from the internet. " +
+                    "On the host, click 'Copy Code' and use the address marked \u2605 (router mapping, IPv6 or Tailscale). " +
+                    "If the host is on hotel/cafe/mobile Wi-Fi, run Tailscale on both PCs.";
+            }
+
+            return "\n\n" + host + " is a private LAN address, so it only works while both PCs are on the same Wi-Fi/router. " +
+                "On the host, click 'Copy Code' and paste that code here - it contains the host's current, reachable address. " +
+                "If the host is on hotel/cafe/mobile Wi-Fi, run Tailscale on both PCs.";
         }
 
         private void LoadIpHistory()
@@ -1586,11 +1635,16 @@ namespace RemotePC.UI
                 if (_pnlLogHeader != null) _pnlLogHeader.Width = cardW;
                 if (_logoHost != null) _logoHost.Left = _tabHost.ClientSize.Width - _logoHost.Width - 22;
 
-                if (_tlpHostNetwork != null && _cboHostIps != null)
+                // The address combo shares its row with both Copy buttons, so it has to give up
+                // width first. Without this the buttons were pushed past the window edge.
+                if (_tlpHostNetwork != null && _cboHostIps != null && _btnCopyIp != null && _btnCopyCode != null)
                 {
-                    int labelColW = _tlpHostNetwork.GetColumnWidths().Length > 0 ? _tlpHostNetwork.GetColumnWidths()[0] : 180;
-                    int maxCboW = cardW - labelColW - 130;
-                    _cboHostIps.Width = Math.Max(180, Math.Min(380, maxCboW));
+                    int labelColW = GetFirstColumnWidth(_tlpHostNetwork, 100);
+                    int innerW = Math.Max(120, cardW - 26);
+                    int buttonsW = _btnCopyIp.Width + _btnCopyIp.Margin.Left
+                                 + _btnCopyCode.Width + _btnCopyCode.Margin.Left + 4;
+                    int comboW = innerW - labelColW - buttonsW;
+                    _cboHostIps.Width = Math.Max(90, Math.Min(380, comboW));
                 }
 
                 if (_lbHostLog != null)
@@ -1610,7 +1664,43 @@ namespace RemotePC.UI
 
                 if (_gbDiscovery != null) _gbDiscovery.Width = cardW;
                 if (_gbClientConnect != null) _gbClientConnect.Width = cardW;
+                if (_flowClientOpts != null) _flowClientOpts.Width = cardW;
                 if (_logoClient != null) _logoClient.Left = _tabClient.ClientSize.Width - _logoClient.Width - 22;
+
+                int innerW = Math.Max(120, cardW - 26);
+
+                // Discovery row: shrink the list so "Quick Connect" stays visible.
+                if (_cboDiscovered != null && _btnQuickConnect != null)
+                {
+                    int captionW = _lblDiscoveryCaption != null
+                        ? _lblDiscoveryCaption.Width + _lblDiscoveryCaption.Margin.Right
+                        : 114;
+                    int buttonW = _btnQuickConnect.Width + _btnQuickConnect.Margin.Left + 4;
+                    int comboW = innerW - captionW - buttonW;
+                    _cboDiscovered.Width = Math.Max(90, Math.Min(340, comboW));
+                }
+
+                // Connection details: shorten the address and PIN boxes instead of cutting off
+                // the port field / Show button on the right.
+                if (_tlpClientConnect != null)
+                {
+                    int labelColW = GetFirstColumnWidth(_tlpClientConnect, 150);
+                    int rowW = Math.Max(120, innerW - labelColW);
+
+                    if (_cboClientIp != null && _numClientPort != null)
+                    {
+                        int portW = 15 + 6 + 2 + _numClientPort.Width;
+                        if (_lblClientPortCaption != null) portW += _lblClientPortCaption.Width;
+                        int comboW = rowW - portW;
+                        _cboClientIp.Width = Math.Max(100, Math.Min(300, comboW));
+                    }
+
+                    if (_txtClientPassword != null && _btnToggleClientPass != null)
+                    {
+                        int textW = rowW - _btnToggleClientPass.Width - _btnToggleClientPass.Margin.Left - 4;
+                        _txtClientPassword.Width = Math.Max(100, Math.Min(300, textW));
+                    }
+                }
 
                 if (_rtbGuide != null)
                 {
@@ -1619,6 +1709,17 @@ namespace RemotePC.UI
                     if (guideHeight > 60) _rtbGuide.Height = guideHeight;
                 }
             }
+        }
+
+        private int GetFirstColumnWidth(TableLayoutPanel table, int fallback)
+        {
+            try
+            {
+                int[] widths = table.GetColumnWidths();
+                if (widths != null && widths.Length > 0 && widths[0] > 0) return widths[0];
+            }
+            catch { }
+            return fallback;
         }
 
         #endregion
@@ -1683,7 +1784,7 @@ namespace RemotePC.UI
 
                     SetAutoStatus(fwOk
                         ? "Automatic setup: firewall open, Start Menu entry ready."
-                        : "Automatic setup: firewall NOT open - click 'Auto-Configure Firewall'.");
+                        : "Automatic setup: firewall NOT open - click 'Fix Firewall'.");
                 }
                 catch (Exception ex)
                 {
@@ -1729,7 +1830,7 @@ namespace RemotePC.UI
 
                 SetAutoStatus(ok
                     ? "Automatic setup: firewall open, Start Menu entry ready."
-                    : "Automatic setup: firewall NOT open - click 'Auto-Configure Firewall'.");
+                    : "Automatic setup: firewall NOT open - click 'Fix Firewall'.");
             });
         }
 
