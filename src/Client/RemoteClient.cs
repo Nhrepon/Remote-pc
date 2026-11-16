@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -25,6 +26,9 @@ namespace RemotePC.Client
         public string HostAddress { get; private set; }
         public int HostPort { get; private set; }
         public bool IsConnected { get { return _isConnected; } }
+
+        /// <summary>Human-readable reason for the most recent failed connection attempt.</summary>
+        public string LastError { get; private set; }
 
         // Events
         public event Action<Bitmap, long> OnFrameReceived;
@@ -51,23 +55,103 @@ namespace RemotePC.Client
         {
             try
             {
-                HostAddress = host;
-                HostPort = port;
-                _tcpClient = new TcpClient();
-                _tcpClient.NoDelay = true;
-                _tcpClient.ReceiveBufferSize = 256 * 1024;
-                _tcpClient.SendBufferSize = 256 * 1024;
-
-                IAsyncResult ar = _tcpClient.BeginConnect(host, port, null, null);
-                bool success = ar.AsyncWaitHandle.WaitOne(timeoutMs > 0 ? timeoutMs : 5000);
-                if (!success || !_tcpClient.Connected)
+                if (string.IsNullOrEmpty(host))
                 {
-                    _tcpClient.Close();
-                    Log("Connection to " + host + ":" + port + " timed out.");
+                    LastError = "No host address was supplied.";
                     return false;
                 }
-                _tcpClient.EndConnect(ar);
 
+                host = host.Trim();
+                if (host.Length > 1 && host[0] == '[' && host[host.Length - 1] == ']')
+                    host = host.Substring(1, host.Length - 2);
+
+                HostAddress = host;
+                HostPort = port;
+                LastError = null;
+
+                int budget = timeoutMs > 0 ? timeoutMs : 5000;
+
+                // Resolve once and try every address. This is what makes a dual-stack host
+                // work even when its IPv6 route is broken and only IPv4 (or vice versa) is
+                // reachable - the old code handed the hostname to TcpClient and gave up on
+                // whichever address DNS happened to return first.
+                IPAddress[] addresses;
+                try
+                {
+                    addresses = Dns.GetHostAddresses(host);
+                }
+                catch (Exception ex)
+                {
+                    LastError = "Could not resolve '" + host + "': " + ex.Message;
+                    Log(LastError);
+                    return false;
+                }
+
+                if (addresses == null || addresses.Length == 0)
+                {
+                    LastError = "No network addresses were found for '" + host + "'.";
+                    Log(LastError);
+                    return false;
+                }
+
+                TcpClient connected = null;
+                string lastFailure = null;
+                Stopwatch timer = Stopwatch.StartNew();
+
+                for (int i = 0; i < addresses.Length; i++)
+                {
+                    IPAddress address = addresses[i];
+                    if (address.AddressFamily != AddressFamily.InterNetwork &&
+                        address.AddressFamily != AddressFamily.InterNetworkV6)
+                        continue;
+
+                    int remaining = budget - (int)timer.ElapsedMilliseconds;
+                    if (remaining <= 0) break;
+
+                    TcpClient candidate = null;
+                    try
+                    {
+                        candidate = new TcpClient(address.AddressFamily);
+                        candidate.NoDelay = true;
+                        candidate.ReceiveBufferSize = 256 * 1024;
+                        candidate.SendBufferSize = 256 * 1024;
+
+                        // Give each address at most three seconds so a broken IPv6 route
+                        // does not consume the whole budget before IPv4 is tried.
+                        int attemptTimeout = Math.Min(remaining, 3000);
+                        IAsyncResult ar = candidate.BeginConnect(address, port, null, null);
+                        if (ar.AsyncWaitHandle.WaitOne(attemptTimeout))
+                        {
+                            candidate.EndConnect(ar);
+                            connected = candidate;
+                            candidate = null;
+                            break;
+                        }
+
+                        lastFailure = address + " timed out";
+                    }
+                    catch (Exception ex)
+                    {
+                        lastFailure = address + ": " + ex.Message;
+                    }
+                    finally
+                    {
+                        if (candidate != null)
+                        {
+                            try { candidate.Close(); } catch { }
+                        }
+                    }
+                }
+
+                if (connected == null)
+                {
+                    LastError = "No route to " + ConnectionCode.FormatEndpoint(host, port)
+                        + " (" + (lastFailure == null ? "timed out" : lastFailure) + ").";
+                    Log("Connection failed: " + LastError);
+                    return false;
+                }
+
+                _tcpClient = connected;
                 _stream = _tcpClient.GetStream();
                 _isConnected = true;
 
@@ -80,6 +164,7 @@ namespace RemotePC.Client
                 byte[] respPayload;
                 if (!Protocol.ReceivePacket(_stream, out respType, out respPayload) || respType != PacketType.AuthResponse)
                 {
+                    LastError = "The host accepted the connection but did not answer the login.";
                     Log("Failed to receive authentication response from host.");
                     Disconnect();
                     return false;
@@ -92,6 +177,7 @@ namespace RemotePC.Client
 
                 if (!authSuccess)
                 {
+                    LastError = authMsg;
                     Log("Authentication failed: " + authMsg);
                     if (OnAuthResult != null) OnAuthResult(false, authMsg);
                     Disconnect();
@@ -114,6 +200,7 @@ namespace RemotePC.Client
             }
             catch (Exception ex)
             {
+                LastError = ex.Message;
                 Log("Connect error: " + ex.Message);
                 Disconnect();
                 return false;

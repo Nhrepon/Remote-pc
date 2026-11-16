@@ -35,7 +35,14 @@ namespace RemotePC.Common
 
         public static int MappedPort { get; private set; }
 
+        /// <summary>The external port the router finally granted (may differ from the request).</summary>
+        public static int ExternalPort { get; private set; }
+
+        /// <summary>Raised whenever the router's public address changes.</summary>
+        public static event Action<string> PublicIpChanged;
+
         private static volatile bool _renewing;
+        private static int _generation;
         private static readonly object _stateLock = new object();
 
         /// <summary>
@@ -45,26 +52,31 @@ namespace RemotePC.Common
         /// </summary>
         public static void MapAsync(int port, Action<bool, string> onComplete)
         {
+            int generation = Interlocked.Increment(ref _generation);
+            _renewing = true;
+
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string error;
-                bool ok = TryMap(port, out error);
+                bool ok = TryMap(port, generation, out error);
+
+                // A newer request (normally a network change) superseded this one.
+                if (generation != _generation) return;
 
                 if (onComplete != null) onComplete(ok, error);
 
                 if (!ok) return;
 
                 // Renew at half the lease so the mapping never lapses between renewals.
-                _renewing = true;
                 int intervalMs = Math.Max(30, LifetimeSeconds / 2) * 1000;
 
-                while (_renewing)
+                while (_renewing && generation == _generation)
                 {
-                    if (!SleepInterruptible(intervalMs)) break;
-                    if (!_renewing) break;
+                    if (!SleepInterruptible(intervalMs, generation)) break;
+                    if (!_renewing || generation != _generation) break;
 
                     string renewError;
-                    if (!TryMap(port, out renewError))
+                    if (!TryMap(port, generation, out renewError))
                     {
                         // A single failed renewal is not fatal; the loop retries next round.
                     }
@@ -75,6 +87,8 @@ namespace RemotePC.Common
         /// <summary>Cancels renewal and removes the mapping from the router.</summary>
         public static void Unmap()
         {
+            // Invalidate any renewal loop that is still running.
+            Interlocked.Increment(ref _generation);
             _renewing = false;
 
             int port;
@@ -83,6 +97,8 @@ namespace RemotePC.Common
                 if (!IsMapped) return;
                 port = MappedPort;
                 IsMapped = false;
+                MappedPort = 0;
+                ExternalPort = 0;
             }
 
             try
@@ -97,7 +113,7 @@ namespace RemotePC.Common
             catch { }
         }
 
-        private static bool TryMap(int port, out string error)
+        private static bool TryMap(int port, int generation, out string error)
         {
             error = null;
 
@@ -176,19 +192,34 @@ namespace RemotePC.Common
                     grantedExternalPort, port, grantedExternalPort);
             }
 
+            bool changed;
             lock (_stateLock)
             {
+                if (generation != _generation)
+                {
+                    error = "Superseded by a newer network request.";
+                    return false;
+                }
+
+                changed = !string.Equals(ExternalPublicIp, publicIp, StringComparison.OrdinalIgnoreCase);
                 ExternalPublicIp = publicIp;
                 IsMapped = true;
-                MappedPort = port;
+                MappedPort = grantedExternalPort > 0 ? grantedExternalPort : port;
+                ExternalPort = MappedPort;
                 LifetimeSeconds = grantedLifetime > 0 ? grantedLifetime : requestedLifetime;
+            }
+
+            if (changed && PublicIpChanged != null)
+            {
+                try { PublicIpChanged(publicIp); }
+                catch { }
             }
 
             if (error == null)
             {
                 error = string.Format(
                     "Port {0} forward is live. Public address: {1}:{0} (lease {2}s).",
-                    port, publicIp, LifetimeSeconds);
+                    MappedPort, publicIp, LifetimeSeconds);
             }
 
             return true;
@@ -309,17 +340,17 @@ namespace RemotePC.Common
             buffer[offset + 3] = (byte)(value & 0xFF);
         }
 
-        private static bool SleepInterruptible(int totalMs)
+        private static bool SleepInterruptible(int totalMs, int generation)
         {
             int slept = 0;
             while (slept < totalMs)
             {
-                if (!_renewing) return false;
+                if (!_renewing || generation != _generation) return false;
                 int slice = Math.Min(500, totalMs - slept);
                 Thread.Sleep(slice);
                 slept += slice;
             }
-            return _renewing;
+            return _renewing && generation == _generation;
         }
     }
 }

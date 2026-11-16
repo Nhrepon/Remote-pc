@@ -24,11 +24,17 @@ namespace RemotePC.Tests
                 TestSystemInfo();
                 Console.WriteLine("[PASS] SystemInfo & network adapter tests passed.");
 
+                TestConnectionCodeParsing();
+                Console.WriteLine("[PASS] Connection code parsing tests passed.");
+
+                TestAddressClassification();
+                Console.WriteLine("[PASS] Address classification tests passed.");
+
                 TestFileChunkingIntegrity();
                 Console.WriteLine("[PASS] File transfer chunking & reassembly integrity passed.");
 
                 Console.WriteLine("\n========================================");
-                Console.WriteLine("  ALL TESTS PASSED SUCCESSFULLY (4/4)!  ");
+                Console.WriteLine("  ALL TESTS PASSED SUCCESSFULLY (6/6)!  ");
                 Console.WriteLine("========================================");
                 return 0;
             }
@@ -137,8 +143,58 @@ namespace RemotePC.Tests
                 throw new Exception("Invalid system info string!");
         }
 
-        static void TestFileChunkingIntegrity()
+        static void TestConnectionCodeParsing()
         {
+            string code = ConnectionCode.Create("203.0.113.9", 8888, "1234567890");
+            if (code != "RPC1|203.0.113.9|8888|1234567890")
+                throw new Exception("Connection code format mismatch: " + code);
+
+            string host;
+            int port;
+            string pin;
+
+            if (!ConnectionCode.TryParse(code, out host, out port, out pin)
+                || host != "203.0.113.9" || port != 8888 || pin != "1234567890")
+                throw new Exception("Full connection code did not round-trip.");
+
+            if (!ConnectionCode.TryParse("192.168.1.5:9999", out host, out port, out pin)
+                || host != "192.168.1.5" || port != 9999 || pin != null)
+                throw new Exception("host:port parsing failed.");
+
+            if (!ConnectionCode.TryParse("[2001:db8::1]:8888", out host, out port, out pin)
+                || host != "2001:db8::1" || port != 8888)
+                throw new Exception("Bracketed IPv6 parsing failed.");
+
+            if (!ConnectionCode.TryParse("2001:db8::1", out host, out port, out pin)
+                || host != "2001:db8::1" || port != 0)
+                throw new Exception("Raw IPv6 parsing failed.");
+
+            if (!ConnectionCode.TryParse("my-laptop.tailnet.ts.net", out host, out port, out pin)
+                || host != "my-laptop.tailnet.ts.net" || port != 0)
+                throw new Exception("Host name parsing failed.");
+
+            if (ConnectionCode.FormatEndpoint("2001:db8::1", 8888) != "[2001:db8::1]:8888")
+                throw new Exception("IPv6 endpoint formatting failed.");
+        }
+
+        static void TestAddressClassification()
+        {
+            if (!PublicIpResolver.IsPrivateOrShared("192.168.1.10")) throw new Exception("RFC1918 192.168/16 not detected.");
+            if (!PublicIpResolver.IsPrivateOrShared("10.1.2.3")) throw new Exception("RFC1918 10/8 not detected.");
+            if (!PublicIpResolver.IsPrivateOrShared("172.16.4.1")) throw new Exception("RFC1918 172.16/12 not detected.");
+            if (!PublicIpResolver.IsPrivateOrShared("100.64.1.1")) throw new Exception("Carrier-grade NAT range not detected.");
+            if (!PublicIpResolver.IsPrivateOrShared("169.254.1.1")) throw new Exception("Link-local IPv4 not detected.");
+            if (PublicIpResolver.IsPrivateOrShared("8.8.8.8")) throw new Exception("Public IPv4 misclassified.");
+
+            if (!PublicIpResolver.IsPrivateOrShared("::1")) throw new Exception("IPv6 loopback not detected.");
+            if (!PublicIpResolver.IsPrivateOrShared("fe80::1")) throw new Exception("IPv6 link-local not detected.");
+            if (!PublicIpResolver.IsPrivateOrShared("fd7a:115c:a1e0::1")) throw new Exception("IPv6 ULA not detected.");
+            if (PublicIpResolver.IsPrivateOrShared("2001:4860:4860::8888")) throw new Exception("Public IPv6 misclassified.");
+            if (!PublicIpResolver.IsPublicIPv6(System.Net.IPAddress.Parse("2001:4860:4860::8888")))
+                throw new Exception("Global IPv6 not recognised.");
+        }
+
+        static void TestFileChunkingIntegrity()        {
             // Create 250KB of random pseudo-data
             byte[] sourceData = new byte[250 * 1024];
             Random r = new Random(12345);

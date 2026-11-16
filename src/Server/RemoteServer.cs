@@ -41,8 +41,24 @@ namespace RemotePC.Server
             Port = port;
             try
             {
-                _listener = new TcpListener(IPAddress.Any, Port);
-                _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                // A dual-stack (IPv6 + IPv4) listener. On networks with a public IPv6
+                // address this gives the other PC a direct route with no port forwarding at
+                // all. If IPv6 is unavailable the IPv4 listener is used instead.
+                try
+                {
+                    _listener = TcpListener.Create(Port);
+                }
+                catch
+                {
+                    _listener = new TcpListener(IPAddress.Any, Port);
+                }
+
+                try
+                {
+                    _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                }
+                catch { }
+
                 _listener.Start(10);
                 _isRunning = true;
 
@@ -129,6 +145,10 @@ namespace RemotePC.Server
                 catch (SocketException)
                 {
                     // Occurs when listener is stopped
+                    if (!_isRunning) break;
+                }
+                catch (ObjectDisposedException)
+                {
                     break;
                 }
                 catch (Exception ex)

@@ -49,8 +49,11 @@
     <Compile Include="src\Common\AppSettings.cs" />
     <Compile Include="src\Common\AppIcon.cs" />
     <Compile Include="src\Common\AppShortcutHelper.cs" />
+    <Compile Include="src\Common\ConnectionCode.cs" />
     <Compile Include="src\Common\FirewallHelper.cs" />
+    <Compile Include="src\Common\NetworkChangeWatcher.cs" />
     <Compile Include="src\Common\NetworkDiscovery.cs" />
+    <Compile Include="src\Common\PublicIpResolver.cs" />
     <Compile Include="src\Common\UPnPPortForwarder.cs" />
     <Compile Include="src\Common\NatPmpPortMapper.cs" />
     <Compile Include="src\Common\AuthGuard.cs" />

@@ -56,7 +56,18 @@ namespace RemotePC.Server
 
             try
             {
-                ClientEndPoint = client.Client.RemoteEndPoint.ToString();
+                System.Net.IPEndPoint endPoint = client.Client.RemoteEndPoint as System.Net.IPEndPoint;
+                if (endPoint != null && endPoint.Address.AddressFamily == AddressFamily.InterNetworkV6
+                    && endPoint.Address.IsIPv4MappedToIPv6)
+                {
+                    // The dual-stack listener reports IPv4 callers as ::ffff:a.b.c.d; show
+                    // the normal dotted address so lockout messages and logs stay readable.
+                    ClientEndPoint = endPoint.Address.MapToIPv4().ToString() + ":" + endPoint.Port;
+                }
+                else
+                {
+                    ClientEndPoint = client.Client.RemoteEndPoint.ToString();
+                }
             }
             catch
             {

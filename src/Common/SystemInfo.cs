@@ -51,13 +51,16 @@ namespace RemotePC.Common
                             info.Description = ni.Description;
                             info.IpAddress = ipStr;
 
-                            if (isTailscale)
+                            if (!ContainsAddress(list, ipStr))
                             {
-                                list.Insert(0, info); // Place Tailscale right at the top
-                            }
-                            else
-                            {
-                                list.Add(info);
+                                if (isTailscale)
+                                {
+                                    list.Insert(0, info); // Place Tailscale right at the top
+                                }
+                                else
+                                {
+                                    list.Add(info);
+                                }
                             }
                         }
                     }
@@ -74,6 +77,7 @@ namespace RemotePC.Common
                     {
                         if (addresses[i].AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(addresses[i]))
                         {
+                            if (ContainsAddress(list, addresses[i].ToString())) continue;
                             NetworkAdapterInfo info = new NetworkAdapterInfo();
                             info.Name = "Local Adapter";
                             info.Description = hostName;
@@ -95,6 +99,87 @@ namespace RemotePC.Common
             }
 
             return list;
+        }
+
+        /// <summary>
+        /// Globally routable IPv6 addresses on this PC. Many mobile hotspots and modern home
+        /// ISPs hand out a public IPv6 address that accepts inbound connections without any
+        /// router port forwarding, which is the closest thing to zero-configuration remote
+        /// access that exists without a relay server.
+        /// </summary>
+        public static List<NetworkAdapterInfo> GetLocalIPv6Addresses()
+        {
+            List<NetworkAdapterInfo> list = new List<NetworkAdapterInfo>();
+
+            try
+            {
+                NetworkInterface[] interfaces = NetworkInterface.GetAllNetworkInterfaces();
+                for (int i = 0; i < interfaces.Length; i++)
+                {
+                    NetworkInterface ni = interfaces[i];
+                    if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                    // Tunnel adapters expose transient Teredo/ISATAP addresses that are not
+                    // usable for a direct inbound connection.
+                    if (ni.NetworkInterfaceType == NetworkInterfaceType.Tunnel) continue;
+
+                    IPInterfaceProperties ipProps = ni.GetIPProperties();
+                    for (int j = 0; j < ipProps.UnicastAddresses.Count; j++)
+                    {
+                        IPAddress address = ipProps.UnicastAddresses[j].Address;
+                        if (address.AddressFamily != AddressFamily.InterNetworkV6) continue;
+                        if (IPAddress.IsLoopback(address)) continue;
+
+                        byte[] bytes = address.GetAddressBytes();
+                        if (bytes.Length < 16) continue;
+                        // Skip link-local (fe80::/10) and site-local (fec0::/10).
+                        if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) continue;
+                        if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0) continue;
+
+                        bool isTailscale = bytes[0] == 0xfd && bytes[1] == 0x7a
+                            && bytes[2] == 0x11 && bytes[3] == 0x5c;
+                        bool isGlobal = (bytes[0] & 0xe0) == 0x20;
+
+                        // Keep globally routable addresses and the Tailscale ULA, which is
+                        // reachable from anywhere on the same Tailscale account.
+                        if (!isGlobal && !isTailscale) continue;
+
+                        string ipStr = address.ToString();
+                        if (ContainsAddress(list, ipStr)) continue;
+
+                        NetworkAdapterInfo info = new NetworkAdapterInfo();
+                        info.Name = isTailscale ? "★ Tailscale IPv6" : "★ IPv6 (direct)";
+                        info.Description = ni.Description + " - try this if both PCs have IPv6";
+                        info.IpAddress = ipStr;
+                        list.Add(info);
+                    }
+                }
+            }
+            catch { }
+
+            return list;
+        }
+
+        /// <summary>
+        /// Every address worth offering on the Host tab: IPv6 first (works over the internet
+        /// on many networks), then LAN/Tailscale IPv4.
+        /// </summary>
+        public static List<NetworkAdapterInfo> GetLocalAddressesForRemoteAccess()
+        {
+            List<NetworkAdapterInfo> list = new List<NetworkAdapterInfo>();
+            list.AddRange(GetLocalIPv6Addresses());
+            list.AddRange(GetLocalIPv4Addresses());
+            return list;
+        }
+
+        private static bool ContainsAddress(List<NetworkAdapterInfo> list, string address)
+        {
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (string.Equals(list[i].IpAddress, address, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         public static string GetSystemUptime()

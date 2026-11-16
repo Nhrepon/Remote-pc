@@ -35,7 +35,10 @@ A fast, lightweight, and self-contained **Remote Desktop & Remote Control** appl
   - Single executable (`RemotePC.exe` ~86 KB) contains **both Host (Server) and Client (Viewer)** modes.
   - Auto-generated or custom access PIN / password.
   - Option to toggle view-only vs full control.
-  - Displays all local IPv4 network adapters with a 1-click **"Copy IP"** button.
+  - **Automatic network adaptation:** when the laptop joins a different Wi-Fi, hotspot or LAN, the app re-applies Windows Firewall, restarts discovery, rebuilds the router port mapping and refreshes the public address — no manual reconfiguration.
+  - **One-paste connection code:** `Copy Code` puts address + port + PIN on the clipboard; the client fills all three fields from it.
+  - **IPv6 support:** the server is dual-stack, so on networks that provide a public IPv6 address the other PC can connect directly without any port forwarding.
+  - Displays all local IPv4/IPv6 network adapters with 1-click **"Copy IP"** / **"Copy Code"** buttons.
   - Zero third-party dependencies — runs natively on Windows 7, 8, 10, and 11 out of the box!
 
 ---
@@ -57,7 +60,7 @@ Nothing else has to be installed or configured by hand.
 ### Step 2: On PC 1 (The PC to Host / Access)
 1. Double-click `RemotePC.exe`.
 2. Approve the single Windows prompt asking to allow firewall changes.
-3. Look at **"This PC's IPv4 Address"** (e.g. `192.168.1.105`) and click **"Copy IP"**.
+3. Look at **"This PC's IPv4 Address"** and click **"Copy Code"** — this copies the address, port and PIN together.
 4. Note the **Security PIN** shown on screen:
    - The server already started for you on the first run.
    - On later runs press the green **"Start Server"** button, or tick **⚡ Auto-Start Server**.
@@ -69,31 +72,70 @@ Nothing else has to be installed or configured by hand.
 ### Step 3: On PC 2 (The PC You Are Sitting At)
 1. Double-click `RemotePC.exe`.
 2. Switch to the **"Connect to Remote PC (Client)"** tab.
-3. In **"Remote PC IP Address"**, paste the IP address from PC 1.
-4. Enter the **Security PIN** from PC 1.
-5. Click **"Connect to Remote PC"**.
+3. Paste the code from PC 1 into **"Remote PC IP Address"** (the port and PIN fill in automatically), or type the IP and PIN separately.
+4. Click **"Connect to Remote PC"**.
 
 🎉 The **Remote Desktop Viewer** window will open immediately with live screen viewing, responsive mouse & keyboard control, file management, and chat!
 
 ---
 
-## 🌐 Connecting Across Different Networks (Over the Internet)
+## 🌐 Using the Laptop on Different Networks (Zero Manual Config)
 
-If your 2 PCs are in different locations (e.g. Home PC and Office PC, or different Wi-Fi networks):
+The app is designed to be carried between networks. On every server start **and every time
+the laptop changes network**, it automatically:
 
-### Method 1: Tailscale (Recommended — 100% Free, Secure, Zero Router Setup)
-1. Install [Tailscale](https://tailscale.com) on both PCs and sign in with the same account.
-2. Tailscale assigns each PC a private secure IP (e.g. `100.x.y.z`).
-3. In `RemotePC.exe`, select or enter the Tailscale IP on PC 2 to connect securely from anywhere in the world!
+1. Re-applies the Windows Firewall rules for the active profile (Private/Public/Domain).
+2. Restarts LAN discovery on the new subnet.
+3. Asks the router to forward the port using **NAT-PMP**, then **UPnP IGD**.
+4. Discovers the new public IPv4 address.
+5. Refreshes the address list, including any global **IPv6** address.
+6. Renews the router mapping every 10 minutes and after router reboots.
 
-### Method 2: Router Port Forwarding
-1. On PC 1's home/office router, open router admin page (e.g. `192.168.1.1`).
-2. Add a Port Forwarding rule:
-   - External Port: `8888`
-   - Internal Port: `8888`
-   - Internal IP: PC 1's local IP (e.g. `192.168.1.105`)
-   - Protocol: `TCP`
-3. On PC 2, connect using PC 1's **Public IP address** (find it by visiting [whatismyipaddress.com](https://whatismyipaddress.com) on PC 1).
+### The one step on the other PC
+
+On the host, click **"Copy Code"**. It copies one line like:
+
+```
+RPC1|203.0.113.25|8888|1234567890
+```
+
+On the client, paste it into **"Remote PC IP Address"** and click **Connect**. The port and
+PIN fields are filled in automatically. Addresses marked **★** are the ones that work across
+networks (automatic router mapping, IPv6, or Tailscale).
+
+### What is really automatic
+
+| Network | Works with no configuration? |
+| --- | --- |
+| Same Wi-Fi / LAN | **Yes** — discovery, firewall and addresses are automatic |
+| Home/office router with UPnP or NAT-PMP | **Yes** — port mapping and public address are automatic |
+| Network with a public IPv6 address (many ISPs/mobile networks) | **Usually yes** — pick the ★ IPv6 address |
+| Tailscale installed on both PCs | **Yes** — pick the ★ Tailscale address |
+| Hotel / café / airport guest Wi-Fi, or ISP carrier-grade NAT | **No** — inbound connections are blocked before they reach the laptop |
+| Public Wi-Fi that requires a web login | **No** — the laptop is not reachable until you sign in, and usually not even then |
+
+### If the network blocks inbound connections
+
+No application can accept an inbound connection through carrier-grade NAT or a guest Wi-Fi
+without a relay server. The host's log says plainly when this is the case, for example:
+
+```
+[Internet] Public address 100.64.x.x is carrier-grade NAT; inbound connections cannot reach this PC.
+```
+
+The free options are:
+
+1. **Tailscale (recommended):** install it on both PCs, sign in with the same account, then
+   use the address marked **★ … (Internet/Tailscale)** in the app. It works from any network.
+2. Keep the **host** on a home/office network and use the laptop as the **client**.
+3. *(Advanced)* Forward TCP port 8888 manually on a router you control. The log still shows
+   the public address, and the `⚠ Internet (port forward needed)` entry lets you copy it.
+
+### Security on public networks
+
+The PIN is ten digits and the server locks a source address out after five wrong attempts
+for 15 minutes, so exposing the port does not make the PIN guessable. Still, use a fresh PIN
+and prefer Tailscale on networks you do not control.
 
 ---
 
@@ -134,11 +176,17 @@ remote-pc/
 │   │   ├── Protocol.cs        // Binary packet framing & serialization
 │   │   ├── InputSimulator.cs  // Mouse & keyboard simulation
 │   │   ├── ScreenCapturer.cs  // GDI+ screen capture, cursor drawing, JPEG compression
-│   │   ├── SystemInfo.cs      // Network IP detection & hardware specs
+│   │   ├── SystemInfo.cs      // IPv4/IPv6 detection & hardware specs
 │   │   ├── AppIcon.cs         // Embedded app icon & logo loader
-│   │   └── FirewallHelper.cs  // Zero-touch Windows Firewall rule automation
+│   │   ├── ConnectionCode.cs  // One-paste address + port + PIN parser/formatter
+│   │   ├── FirewallHelper.cs  // Zero-touch Windows Firewall rule automation
+│   │   ├── NetworkChangeWatcher.cs // Debounced Wi-Fi/network change notifications
+│   │   ├── NetworkDiscovery.cs     // LAN UDP auto-discovery
+│   │   ├── NatPmpPortMapper.cs     // NAT-PMP router mapping with lease renewal
+│   │   ├── UPnPPortForwarder.cs    // UPnP IGD mapping with renewal & cleanup
+│   │   └── PublicIpResolver.cs     // Public IP detection + CGNAT/private classification
 │   ├── Server/
-│   │   ├── RemoteServer.cs    // Multi-threaded TCP listener
+│   │   ├── RemoteServer.cs    // Dual-stack (IPv4 + IPv6) TCP listener
 │   │   └── ServerSession.cs   // Client session management & screen stream loop
 │   ├── Client/
 │   │   └── RemoteClient.cs    // Network client, frame decoder, event forwarder

@@ -23,6 +23,7 @@ namespace RemotePC.UI
         private GroupBox _gbHostNetwork;
         private ComboBox _cboHostIps;
         private Button _btnCopyIp;
+        private Button _btnCopyCode;
         private NumericUpDown _numHostPort;
         private TextBox _txtHostPassword;
         private Button _btnToggleHostPass;
@@ -81,6 +82,13 @@ namespace RemotePC.UI
         private NotifyIcon _trayIcon;
         private AppSettings _settings;
 
+        // Automatic re-configuration when the laptop moves between networks.
+        private NetworkChangeWatcher _networkWatcher;
+        private System.Windows.Forms.Timer _internetRefreshTimer;
+        private int _publicIpLookupBusy;
+        private string _lastPublicIp;
+        private int _advertisedPort;
+
         #endregion
 
         public MainForm()
@@ -100,6 +108,7 @@ namespace RemotePC.UI
             LoadIpHistory();
             GenerateRandomPin();
             LoadSettingsIntoUI();
+            InitializeNetworkAutomation();
 
             this.Resize += MainForm_Resize;
             this.Shown += MainForm_Shown;
@@ -201,7 +210,7 @@ namespace RemotePC.UI
 
             // 1. Header Banner
             Label lblTitle = new Label();
-            lblTitle.Text = "Host Mode: Allow Another PC to Control This PC";
+            lblTitle.Text = "Host Mode: Let Another PC Control This PC";
             lblTitle.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
             lblTitle.Location = new Point(20, top);
             lblTitle.AutoSize = true;
@@ -260,28 +269,32 @@ namespace RemotePC.UI
             _gbHostNetwork.Controls.Add(_tlpHostNetwork);
 
             // Row 0: IP Address
-            Label lblIp = new Label() { Text = "This PC's IPv4 Address:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            Label lblIp = new Label() { Text = "This PC's IP:", AutoSize = true, Margin = new Padding(0, 8, 12, 0) };
             _tlpHostNetwork.Controls.Add(lblIp, 0, 0);
 
-            FlowLayoutPanel flowIp = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
-            _cboHostIps = new ComboBox() { Width = 340, DropDownStyle = ComboBoxStyle.DropDownList };
+            FlowLayoutPanel flowIp = new FlowLayoutPanel() { AutoSize = false, Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 5, 0, 0) };
+            _cboHostIps = new ComboBox() { Width = 300, DropDownStyle = ComboBoxStyle.DropDownList };
             RefreshHostIps();
             flowIp.Controls.Add(_cboHostIps);
 
-            _btnCopyIp = new Button() { Text = "Copy IP", Width = 95, Height = 27, Margin = new Padding(8, 0, 0, 0) };
+            _btnCopyIp = new Button() { Text = "Copy IP", Width = 88, Height = 27, Margin = new Padding(8, 0, 0, 0) };
             _btnCopyIp.Click += BtnCopyIp_Click;
             flowIp.Controls.Add(_btnCopyIp);
+
+            _btnCopyCode = new Button() { Text = "Copy Code", Width = 88, Height = 27, Margin = new Padding(8, 0, 0, 0) };
+            _btnCopyCode.Click += BtnCopyCode_Click;
+            flowIp.Controls.Add(_btnCopyCode);
             _tlpHostNetwork.Controls.Add(flowIp, 1, 0);
 
             // Row 1: Port
-            Label lblPort = new Label() { Text = "Port:", AutoSize = true, Margin = new Padding(0, 6, 15, 0) };
+            Label lblPort = new Label() { Text = "Port:", AutoSize = true, Margin = new Padding(0, 6, 12, 0) };
             _tlpHostNetwork.Controls.Add(lblPort, 0, 1);
 
             _numHostPort = new NumericUpDown() { Width = 100, Minimum = 1024, Maximum = 65535, Value = 8888, Margin = new Padding(0, 3, 0, 0) };
             _tlpHostNetwork.Controls.Add(_numHostPort, 1, 1);
 
             // Row 2: Security PIN
-            Label lblPass = new Label() { Text = "Security PIN / Password:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            Label lblPass = new Label() { Text = "PIN / Password:", AutoSize = true, Margin = new Padding(0, 8, 12, 0) };
             _tlpHostNetwork.Controls.Add(lblPass, 0, 2);
 
             FlowLayoutPanel flowPass = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
@@ -486,12 +499,31 @@ namespace RemotePC.UI
 
         private void RefreshHostIps()
         {
+            string previous = null;
+            NetworkAdapterInfo selected = _cboHostIps.SelectedItem as NetworkAdapterInfo;
+            if (selected != null) previous = selected.IpAddress;
+
             _cboHostIps.Items.Clear();
-            List<NetworkAdapterInfo> adapters = SystemInfo.GetLocalIPv4Addresses();
+            List<NetworkAdapterInfo> adapters = SystemInfo.GetLocalAddressesForRemoteAccess();
             for (int i = 0; i < adapters.Count; i++)
             {
                 _cboHostIps.Items.Add(adapters[i]);
             }
+
+            // Keep the user's choice across a network change when that address still exists.
+            if (!string.IsNullOrEmpty(previous))
+            {
+                for (int i = 0; i < _cboHostIps.Items.Count; i++)
+                {
+                    NetworkAdapterInfo info = _cboHostIps.Items[i] as NetworkAdapterInfo;
+                    if (info != null && string.Equals(info.IpAddress, previous, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _cboHostIps.SelectedIndex = i;
+                        return;
+                    }
+                }
+            }
+
             if (_cboHostIps.Items.Count > 0)
             {
                 _cboHostIps.SelectedIndex = 0;
@@ -539,17 +571,58 @@ namespace RemotePC.UI
 
         private void BtnCopyIp_Click(object sender, EventArgs e)
         {
-            if (_cboHostIps.SelectedItem != null)
+            string ip = GetSelectedHostAddress();
+            if (string.IsNullOrEmpty(ip)) return;
+
+            Clipboard.SetText(ip);
+            MessageBox.Show(
+                string.Format("Copied IP '{0}' to clipboard!\n\nType this IP into the other PC, or use 'Copy Code' to copy the IP, port and PIN together.", ip),
+                "IP Address Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Copies address + port + PIN in one string. The other PC can paste it straight into
+        /// the "Remote PC IP Address" box; the port and PIN fields are filled automatically.
+        /// This is what makes an IPv6 address or a changed public IP painless to send.
+        /// </summary>
+        private void BtnCopyCode_Click(object sender, EventArgs e)
+        {
+            string host = GetSelectedHostAddress();
+            if (string.IsNullOrEmpty(host))
             {
-                NetworkAdapterInfo info = _cboHostIps.SelectedItem as NetworkAdapterInfo;
-                if (info != null)
-                {
-                    Clipboard.SetText(info.IpAddress);
-                    MessageBox.Show(
-                        string.Format("Copied IP '{0}' to clipboard!\n\nType this IP into PC 2 to connect.", info.IpAddress),
-                        "IP Address Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
+                MessageBox.Show("No address is available yet. Start the server and try again.",
+                    "Nothing to Copy", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
+
+            int port = _advertisedPort > 0 ? _advertisedPort : (int)_numHostPort.Value;
+            string pin = _txtHostPassword.Text.Trim();
+            string code = ConnectionCode.Create(host, port, pin);
+
+            try { Clipboard.SetText(code); }
+            catch { }
+
+            MessageBox.Show(
+                "Connection code copied to the clipboard:\n\n" + code +
+                "\n\nOn the other PC: open RemotePC, paste it into the 'Remote PC IP Address' box and click Connect. " +
+                "The port and PIN are filled in automatically.",
+                "Connection Code Copied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>The selected address, or the first usable one as a fallback.</summary>
+        private string GetSelectedHostAddress()
+        {
+            NetworkAdapterInfo selected = _cboHostIps.SelectedItem as NetworkAdapterInfo;
+            if (selected != null && !string.IsNullOrEmpty(selected.IpAddress)) return selected.IpAddress;
+
+            for (int i = 0; i < _cboHostIps.Items.Count; i++)
+            {
+                NetworkAdapterInfo info = _cboHostIps.Items[i] as NetworkAdapterInfo;
+                if (info != null && !string.IsNullOrEmpty(info.IpAddress) && info.IpAddress != "127.0.0.1")
+                    return info.IpAddress;
+            }
+
+            return null;
         }
 
         private void BtnToggleServer_Click(object sender, EventArgs e)
@@ -609,27 +682,34 @@ namespace RemotePC.UI
                 try { NetworkDiscovery.StopBroadcasting(); }
                 catch { }
 
-                try { NatPmpPortMapper.Unmap(); }
-                catch { }
+                StopInternetAccess();
             }
         }
 
         /// <summary>
         /// Makes this PC reachable from a different network with no router configuration.
-        /// Tries NAT-PMP first, then UPnP, and reports in the log which one worked - or that
-        /// neither is available, in which case the LAN address is still all the user needs.
+        /// Tries NAT-PMP first, then UPnP, then falls back to reporting the public address
+        /// (so a manual forward still works) or explaining why the network cannot accept
+        /// inbound connections at all.
         /// </summary>
         private void OpenInternetAccessAsync(int port)
         {
+            _advertisedPort = port;
+
             NatPmpPortMapper.MapAsync(port, delegate(bool natOk, string natMessage)
             {
                 LogHostLine("[NAT-PMP] " + natMessage);
 
                 if (natOk && !string.IsNullOrEmpty(NatPmpPortMapper.ExternalPublicIp))
                 {
+                    int externalPort = NatPmpPortMapper.ExternalPort > 0 ? NatPmpPortMapper.ExternalPort : port;
+                    _advertisedPort = externalPort;
+                    _lastPublicIp = NatPmpPortMapper.ExternalPublicIp;
+
                     LogHostLine("[Internet] Ready from any network. Connect to "
-                        + NatPmpPortMapper.ExternalPublicIp + ":" + port);
-                    ShowInternetAddress(port, NatPmpPortMapper.ExternalPublicIp);
+                        + ConnectionCode.FormatEndpoint(NatPmpPortMapper.ExternalPublicIp, externalPort));
+                    ShowInternetAddress(externalPort, NatPmpPortMapper.ExternalPublicIp, true);
+                    VerifyMappedAddress(NatPmpPortMapper.ExternalPublicIp);
                     return;
                 }
 
@@ -640,60 +720,331 @@ namespace RemotePC.UI
 
                     if (upnpOk && !string.IsNullOrEmpty(UPnPPortForwarder.ExternalPublicIp))
                     {
+                        _advertisedPort = port;
+                        _lastPublicIp = UPnPPortForwarder.ExternalPublicIp;
                         LogHostLine("[Internet] Ready from any network. Connect to "
-                            + UPnPPortForwarder.ExternalPublicIp + ":" + port);
-                        ShowInternetAddress(port, UPnPPortForwarder.ExternalPublicIp);
+                            + ConnectionCode.FormatEndpoint(UPnPPortForwarder.ExternalPublicIp, port));
+                        ShowInternetAddress(port, UPnPPortForwarder.ExternalPublicIp, true);
+                        VerifyMappedAddress(UPnPPortForwarder.ExternalPublicIp);
                         return;
                     }
 
-                    LogHostLine("[Internet] No automatic router mapping available. PC 2 must be on "
-                        + "the same Wi-Fi, or use a Tailscale 100.x address, or forward port "
-                        + port + " in the router admin page by hand.");
+                    LogHostLine("[Internet] No automatic router mapping available on this network.");
+                    ResolveFallbackAddress(port);
                 });
             });
         }
 
         /// <summary>
-        /// Puts the forwarded public address at the top of the Host tab's address list, so the
-        /// existing "Copy IP" button hands the user the exact string PC 2 has to dial. Without
-        /// this the mapping is invisible and the user still cannot connect from another network.
+        /// Re-checks the address the router handed us. A private address here means the ISP
+        /// has already NATed the connection; no amount of port forwarding on this router can
+        /// make it reachable. Saying so plainly saves hours of "why doesn't it connect?".
         /// </summary>
-        private void ShowInternetAddress(int port, string publicIp)
+        private void VerifyMappedAddress(string mappedIp)
+        {
+            if (PublicIpResolver.IsPrivateOrShared(mappedIp))
+            {
+                LogHostLine("[Internet] WARNING: the router's public address is " + mappedIp +
+                    " - this network is behind carrier-grade NAT. Direct connections will not work; " +
+                    "use IPv6, Tailscale, or another network.");
+            }
+
+            PublicIpResolver.ResolveAsync(delegate(string observed)
+            {
+                if (string.IsNullOrEmpty(observed)) return;
+
+                if (!string.Equals(observed, mappedIp, StringComparison.OrdinalIgnoreCase))
+                {
+                    LogHostLine("[Internet] WARNING: the router reports " + mappedIp +
+                        " but the internet sees " + observed + ". This is double NAT; the automatic " +
+                        "mapping may not be reachable. IPv6/Tailscale is the reliable fallback.");
+                }
+            });
+        }
+
+        /// <summary>
+        /// When no mapping was possible, still find the network's public IPv4 address. If it
+        /// is genuinely public, a manual port forward on the router will work and the user can
+        /// copy that address. If it is carrier-grade NAT, say so instead of pretending.
+        /// </summary>
+        private void ResolveFallbackAddress(int port)
+        {
+            PublicIpResolver.ResolveAsync(delegate(string publicIp)
+            {
+                if (this.IsDisposed) return;
+
+                if (string.IsNullOrEmpty(publicIp))
+                {
+                    LogHostLine("[Internet] Could not determine this network's public IP. " +
+                        "Use IPv6, Tailscale, or a different network.");
+                    return;
+                }
+
+                bool shared = PublicIpResolver.IsPrivateOrShared(publicIp);
+                if (shared)
+                {
+                    LogHostLine("[Internet] Public address " + publicIp +
+                        " is carrier-grade NAT; inbound connections cannot reach this PC.");
+                    return;
+                }
+
+                LogHostLine("[Internet] Public address: " + ConnectionCode.FormatEndpoint(publicIp, port) +
+                    ". If you manually forward TCP " + port +
+                    " on the router, the other PC can use this address (or use IPv6/Tailscale).");
+
+                try
+                {
+                    this.BeginInvoke(new Action(delegate
+                    {
+                        if (!this.IsDisposed) ShowInternetAddress(port, publicIp, false, false);
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        private void ShowInternetAddress(int port, string publicIp, bool mapped)
+        {
+            ShowInternetAddress(port, publicIp, mapped, true);
+        }
+
+        /// <summary>
+        /// Puts the internet address at the top of the Host tab's address list, so "Copy IP"
+        /// and "Copy Code" hand the user the exact string the other PC has to dial.
+        /// </summary>
+        private void ShowInternetAddress(int port, string publicIp, bool mapped, bool select)
         {
             if (this.IsDisposed) return;
 
             if (this.InvokeRequired)
             {
-                try { this.BeginInvoke(new Action<int, string>(ShowInternetAddress), port, publicIp); }
+                try { this.BeginInvoke(new Action<int, string, bool, bool>(ShowInternetAddress), port, publicIp, mapped, select); }
                 catch { }
                 return;
             }
 
             try
             {
-                const string label = "★ Internet (port forwarded)";
+                string label = mapped
+                    ? "★ Internet (automatic)"
+                    : "⚠ Internet (port forward needed)";
 
-                // Replace any previous entry so repeated Start/Stop does not pile them up.
-                for (int i = _cboHostIps.Items.Count - 1; i >= 0; i--)
-                {
-                    NetworkAdapterInfo existing = _cboHostIps.Items[i] as NetworkAdapterInfo;
-                    if (existing != null && existing.Name == label) _cboHostIps.Items.RemoveAt(i);
-                }
+                RemoveInternetAddressEntries();
 
                 NetworkAdapterInfo info = new NetworkAdapterInfo();
                 info.Name = label;
-                info.Description = "Works from any network - type this into PC 2";
+                info.Description = mapped
+                    ? "Works from another network - use Copy Code"
+                    : "Public address found, but this router did not allow automatic mapping";
                 info.IpAddress = publicIp;
 
                 _cboHostIps.Items.Insert(0, info);
-                _cboHostIps.SelectedIndex = 0;
+                if (select) _cboHostIps.SelectedIndex = 0;
 
-                _lblHostStatusText.Text = string.Format(
-                    "Server RUNNING on port {0}. From another network connect to {1}:{0}.",
-                    port, publicIp);
+                // Never overwrite the "Active Session" text while somebody is connected.
+                if (!_btnHostChat.Enabled)
+                {
+                    if (mapped)
+                    {
+                        _lblHostStatusText.Text = string.Format(
+                            "Server RUNNING on port {0}. From another network connect to {1}.",
+                            port, ConnectionCode.FormatEndpoint(publicIp, port));
+                    }
+                    else
+                    {
+                        _lblHostStatusText.Text = string.Format(
+                            "Server RUNNING on port {0}. Public IP {1} - automatic mapping unavailable; use IPv6/Tailscale.",
+                            port, publicIp);
+                    }
+                }
             }
             catch { }
         }
+
+        private void RemoveInternetAddressEntries()
+        {
+            for (int i = _cboHostIps.Items.Count - 1; i >= 0; i--)
+            {
+                NetworkAdapterInfo info = _cboHostIps.Items[i] as NetworkAdapterInfo;
+                if (info == null || info.Name == null) continue;
+
+                if (info.Name.StartsWith("★ Internet", StringComparison.Ordinal) ||
+                    info.Name.StartsWith("⚠ Internet", StringComparison.Ordinal))
+                {
+                    _cboHostIps.Items.RemoveAt(i);
+                }
+            }
+        }
+
+        private void StopInternetAccess()
+        {
+            try { NatPmpPortMapper.Unmap(); }
+            catch { }
+            try { UPnPPortForwarder.Stop(); }
+            catch { }
+
+            _advertisedPort = 0;
+            _lastPublicIp = null;
+            try { RemoveInternetAddressEntries(); }
+            catch { }
+        }
+
+        #region Automatic Network Adaptation
+
+        /// <summary>
+        /// Starts the "laptop moved to another Wi-Fi" machinery. Both the router mappings
+        /// and Windows Firewall are profile-specific, so a network change must rebuild them;
+        /// the periodic tick catches public IP changes that happen without an event.
+        /// </summary>
+        private void InitializeNetworkAutomation()
+        {
+            try
+            {
+                UPnPPortForwarder.PublicIpChanged += HandlePublicIpChanged;
+                NatPmpPortMapper.PublicIpChanged += HandlePublicIpChanged;
+
+                _networkWatcher = new NetworkChangeWatcher(HandleNetworkChanged, 2500);
+                _networkWatcher.Start();
+
+                _internetRefreshTimer = new System.Windows.Forms.Timer();
+                _internetRefreshTimer.Interval = 5 * 60 * 1000;
+                _internetRefreshTimer.Tick += delegate { RevalidateInternetAccess(); };
+                _internetRefreshTimer.Start();
+            }
+            catch
+            {
+                // Automation is best-effort; the app still works on the LAN without it.
+            }
+        }
+
+        private void HandleNetworkChanged()
+        {
+            if (this.IsDisposed) return;
+
+            try { this.BeginInvoke(new Action(ApplyNetworkChange)); }
+            catch { }
+        }
+
+        /// <summary>Runs on the UI thread after Windows reports a network change.</summary>
+        private void ApplyNetworkChange()
+        {
+            if (this.IsDisposed) return;
+
+            LogHostLine("[Network] This PC changed networks - re-configuring automatically.");
+            RefreshHostIps();
+
+            if (_server != null && _server.IsRunning)
+            {
+                int port = _server.Port;
+
+                // The old subnet's broadcast address and router mapping are both stale.
+                try { NetworkDiscovery.StopBroadcasting(); }
+                catch { }
+                try { NetworkDiscovery.StartBroadcasting(port); }
+                catch { }
+
+                // A new network usually has a different firewall profile (Public/Private).
+                EnsureFirewallRulesAsync(port);
+
+                StopInternetAccess();
+                OpenInternetAccessAsync(port);
+
+                SetAutoStatus("Automatic setup: adapted to the new network (firewall, discovery, port mapping).");
+            }
+            else
+            {
+                RevalidateInternetAccess();
+                SetAutoStatus("Automatic setup: adapted to the new network.");
+            }
+        }
+
+        private void HandlePublicIpChanged(string publicIp)
+        {
+            if (this.IsDisposed || string.IsNullOrEmpty(publicIp)) return;
+
+            try
+            {
+                this.BeginInvoke(new Action(delegate
+                {
+                    if (this.IsDisposed) return;
+
+                    int port = _advertisedPort > 0
+                        ? _advertisedPort
+                        : (_server != null && _server.IsRunning ? _server.Port : (int)_numHostPort.Value);
+
+                    bool mapped = NatPmpPortMapper.IsMapped || UPnPPortForwarder.IsPortMapped;
+                    _lastPublicIp = publicIp;
+
+                    ShowInternetAddress(port, publicIp, mapped, false);
+                    LogHostLine("[Internet] Public address changed to "
+                        + ConnectionCode.FormatEndpoint(publicIp, port) + ".");
+                }));
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Periodic safety net. Router renewals handle mapped addresses; this catches a
+        /// changed public IP on networks where no mapping is available.
+        /// </summary>
+        private void RevalidateInternetAccess()
+        {
+            if (this.IsDisposed) return;
+
+            bool mapped = NatPmpPortMapper.IsMapped || UPnPPortForwarder.IsPortMapped;
+            if (mapped)
+            {
+                string mappedIp = !string.IsNullOrEmpty(NatPmpPortMapper.ExternalPublicIp)
+                    ? NatPmpPortMapper.ExternalPublicIp
+                    : UPnPPortForwarder.ExternalPublicIp;
+
+                if (!string.IsNullOrEmpty(mappedIp))
+                {
+                    int port = _advertisedPort > 0 ? _advertisedPort : (int)_numHostPort.Value;
+                    if (!string.Equals(_lastPublicIp, mappedIp, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _lastPublicIp = mappedIp;
+                        ShowInternetAddress(port, mappedIp, true, false);
+                        LogHostLine("[Internet] Public address is "
+                            + ConnectionCode.FormatEndpoint(mappedIp, port) + ".");
+                    }
+                    return;
+                }
+            }
+
+            if (System.Threading.Interlocked.Exchange(ref _publicIpLookupBusy, 1) == 1) return;
+
+            bool serverRunning = _server != null && _server.IsRunning;
+            int lookupPort = _advertisedPort > 0
+                ? _advertisedPort
+                : (serverRunning ? _server.Port : (int)_numHostPort.Value);
+
+            PublicIpResolver.ResolveAsync(delegate(string publicIp)
+            {
+                System.Threading.Interlocked.Exchange(ref _publicIpLookupBusy, 0);
+                if (this.IsDisposed) return;
+
+                try
+                {
+                    this.BeginInvoke(new Action(delegate
+                    {
+                        if (this.IsDisposed || string.IsNullOrEmpty(publicIp)) return;
+
+                        if (!string.Equals(_lastPublicIp, publicIp, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _lastPublicIp = publicIp;
+                            LogHostLine("[Internet] Current public IP: " + publicIp);
+                        }
+
+                        if (serverRunning && !PublicIpResolver.IsPrivateOrShared(publicIp))
+                            ShowInternetAddress(lookupPort, publicIp, false, false);
+                    }));
+                }
+                catch { }
+            });
+        }
+
+        #endregion
 
         private void Server_OnStatusChanged(bool running)
         {
@@ -982,17 +1333,25 @@ namespace RemotePC.UI
                 "HOW TO CONNECT YOUR 2 PCS:\n\n" +
                 "SAME NETWORK (Home/Office Wi-Fi):\n" +
                 "  PC 1 (Host): Run RemotePC.exe → 'Allow Remote Access' tab → Start Server\n" +
-                "  PC 2 (Client): Run RemotePC.exe → 'Connect to Remote PC' tab → pick IP from dropdown OR type it in\n\n" +
-                "DIFFERENT NETWORKS (Home ↔ Office):\n" +
-                "  Option A: Just start the server - it forwards its own port on the router (NAT-PMP,\n" +
-                "            then UPnP) and the log shows a public address like 118.179.196.152:8888 to type here\n" +
-                "  Option B: Install free Tailscale on both PCs → use the 100.x.x.x IP shown in this app (★ marked)\n" +
-                "  Option C: If the log says no automatic mapping, forward TCP port 8888 in the router by hand\n\n" +
+                "  PC 2 (Client): pick the PC from 'Discovered PCs' → Quick Connect\n\n" +
+                "DIFFERENT NETWORKS - ZERO CONFIG ON THE HOST:\n" +
+                "  1. PC 1: Start Server, then click 'Copy Code' (copies address + port + PIN).\n" +
+                "  2. PC 2: paste the code into 'Remote PC IP Address' and click Connect.\n" +
+                "     The port and PIN fields fill themselves in.\n" +
+                "  The host automatically re-opens Windows Firewall, restarts discovery and\n" +
+                "  recreates its router port mapping every time it joins a new Wi-Fi/hotspot.\n\n" +
+                "IF THE HOST'S ADDRESS CHANGES:\n" +
+                "  Reconnect with a fresh code. Addresses marked ★ are automatic (NAT-PMP/UPnP),\n" +
+                "  IPv6 or Tailscale; the app prefers whichever works on the current network.\n\n" +
+                "NETWORKS THAT BLOCK INBOUND CONNECTIONS:\n" +
+                "  Hotel, cafe, airport and some mobile networks use carrier-grade NAT. No app can\n" +
+                "  accept an inbound connection there without a relay. Use free Tailscale on both\n" +
+                "  PCs (addresses are marked ★), or keep the host on a home/office network.\n\n" +
                 "SECURITY: the PIN is locked out after " + AuthGuard.MaxFailuresPerAddress +
                 " wrong attempts, so guessing it is not practical.\n" +
                 "TIPS: No manual setup needed - the app adds itself to the Start Menu and opens the\n" +
                 "Windows Firewall on first run (approve the single UAC prompt when asked).\n" +
-                "Settings are auto-saved between sessions. Shortcuts: use the 'Zero-Work Automation' buttons on the Host tab.";
+                "Settings are auto-saved between sessions.";
             _tabClient.Controls.Add(_rtbGuide);
         }
 
@@ -1023,9 +1382,28 @@ namespace RemotePC.UI
         private void BtnConnect_Click(object sender, EventArgs e)
         {
             string host = _cboClientIp.Text.Trim();
+
+            // Accept a full connection code (RPC1|host|port|pin), host:port, [v6]:port,
+            // a plain host name, or a bare IPv4/IPv6 address.
+            string parsedHost;
+            int parsedPort;
+            string parsedPin;
+            if (ConnectionCode.TryParse(host, out parsedHost, out parsedPort, out parsedPin))
+            {
+                host = parsedHost;
+                if (parsedPort >= 1024 && parsedPort <= 65535)
+                    _numClientPort.Value = parsedPort;
+                if (!string.IsNullOrEmpty(parsedPin))
+                    _txtClientPassword.Text = parsedPin;
+
+                if (!string.Equals(_cboClientIp.Text, host, StringComparison.Ordinal))
+                    _cboClientIp.Text = host;
+            }
+
             if (string.IsNullOrEmpty(host))
             {
-                MessageBox.Show("Please enter the Remote PC's IP address.", "IP Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Paste the code from the host, or enter the Remote PC's IP address.",
+                    "Address Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -1055,10 +1433,14 @@ namespace RemotePC.UI
                     }
                     else
                     {
+                        string detail = string.IsNullOrEmpty(client.LastError)
+                            ? ""
+                            : "\n\nDetails: " + client.LastError;
+
                         MessageBox.Show(
                             string.Format(
-                                "Could not connect to {0}:{1}.\n\nEnsure:\n1. Server is running on PC 1.\n2. Both PCs are on the same Wi-Fi/network, or use Tailscale (100.x.x.x IP).\n3. The IP address and PIN are correct.\n4. Windows Firewall is not blocking port {1}.",
-                                host, port),
+                                "Could not connect to {0}.\n\nEnsure:\n1. The server is running on the other PC (green status).\n2. If you are on different networks, ask for a fresh connection code - the host's address changes when it switches Wi-Fi.\n3. Hotel/cafe/public Wi-Fi usually blocks inbound connections; use Tailscale or a home/office network.\n4. The PIN is correct (the host may have generated a new one).{1}",
+                                ConnectionCode.FormatEndpoint(host, port), detail),
                             "Connection Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }));
@@ -1482,6 +1864,24 @@ namespace RemotePC.UI
             }
 
             SaveSettingsFromUI();
+
+            try
+            {
+                if (_networkWatcher != null) _networkWatcher.Stop();
+            }
+            catch { }
+            try
+            {
+                if (_internetRefreshTimer != null) _internetRefreshTimer.Stop();
+            }
+            catch { }
+
+            try { UPnPPortForwarder.PublicIpChanged -= HandlePublicIpChanged; }
+            catch { }
+            try { NatPmpPortMapper.PublicIpChanged -= HandlePublicIpChanged; }
+            catch { }
+
+            StopInternetAccess();
 
             if (_server != null && _server.IsRunning)
                 _server.Stop();
