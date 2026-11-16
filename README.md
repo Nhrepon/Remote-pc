@@ -44,15 +44,24 @@ A fast, lightweight, and self-contained **Remote Desktop & Remote Control** appl
 ### Step 1: Copy `RemotePC.exe` to Both PCs
 Copy `bin\Release\RemotePC.exe` to both PC 1 and PC 2 (using a USB flash drive, local network share, or cloud drive).
 
+**That is the whole setup.** On first launch the app configures itself:
+- Adds **Remote PC** to the Start Menu.
+- Opens the required **Windows Firewall** ports (one UAC prompt — click *Yes*).
+- Starts the server automatically so the PC is immediately reachable.
+
+Nothing else has to be installed or configured by hand.
+
 ---
 
 ### Step 2: On PC 1 (The PC to Host / Access)
 1. Double-click `RemotePC.exe`.
-2. Stay on the **"Allow Remote Access (Host)"** tab.
+2. Approve the single Windows prompt asking to allow firewall changes.
 3. Look at **"This PC's IPv4 Address"** (e.g. `192.168.1.105`) and click **"Copy IP"**.
-4. Note down the **Security PIN** (or click **"Random PIN"** to generate a new 6-digit code).
-5. Click the green **"Start Server"** button.
-   - The status indicator will turn green: `Server is RUNNING on port 8888. Ready for connections.`
+4. Note the **Security PIN** shown on screen:
+   - The server already started for you on the first run.
+   - On later runs press the green **"Start Server"** button, or tick **⚡ Auto-Start Server**.
+   - Generate a fresh code any time with **"Random PIN"**.
+5. The status line reads: `Server is RUNNING on port 8888. Ready for connections.`
 
 ---
 
@@ -87,13 +96,23 @@ If your 2 PCs are in different locations (e.g. Home PC and Office PC, or differe
 
 ---
 
-## 🛡️ Windows Firewall Note
+## 🛡️ Windows Firewall
 
-When starting the server on PC 1 for the first time, Windows Defender Firewall may display a prompt. Check **"Private networks"** and click **"Allow access"**.
+The app opens the firewall itself on first run — you should only ever see a single **"Do you want to allow this app to make changes?"** prompt. Click **Yes** and you are done.
 
-If connection is blocked, you can allow port 8888 by running this command in PowerShell as Administrator:
-```powershell
-New-NetFirewallRule -DisplayName "RemotePC Server" -Direction Inbound -LocalPort 8888 -Protocol TCP -Action Allow
+If you clicked *No* (or are behind a restrictive policy), click **🛡 Auto-Configure Firewall** in the *Zero-Work Automation* box on the Host tab to retry. The status line under the buttons reports whether the ports are open.
+
+What it creates (all inbound, all profiles):
+
+| Rule | Purpose |
+| --- | --- |
+| `RemotePC Server TCP <port>` | The remote-control port (8888 by default) |
+| `RemotePC LAN Discovery UDP 8889` | Lets the other PC find this one automatically |
+| `RemotePC Application` | Covers any other port the app itself listens on |
+
+To remove them again:
+```cmd
+for %R in ("RemotePC Server TCP 8888" "RemotePC LAN Discovery UDP 8889" "RemotePC Application") do netsh advfirewall firewall delete rule name=%R
 ```
 
 ---

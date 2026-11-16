@@ -1238,6 +1238,28 @@ namespace RemotePC.UI
             // Zero-touch setup: firewall rules and a Start Menu entry, done automatically.
             RunFirstRunSetupAsync();
 
+            // First launch ever: behave like the user pressed Start Server, so the app is
+            // reachable the moment RemotePC.exe is double-clicked.
+            if (_settings != null && !_settings.FirstRunComplete)
+            {
+                System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                {
+                    System.Threading.Thread.Sleep(1200);
+                    if (!this.IsDisposed)
+                    {
+                        try
+                        {
+                            this.BeginInvoke(new Action(delegate
+                            {
+                                if (_server == null || !_server.IsRunning)
+                                    BtnToggleServer_Click(null, EventArgs.Empty);
+                            }));
+                        }
+                        catch { }
+                    }
+                });
+            }
+
             if (startMinimized && _chkTrayOnClose != null && _chkTrayOnClose.Checked)
             {
                 this.Hide();

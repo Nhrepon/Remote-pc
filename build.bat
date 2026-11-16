@@ -5,29 +5,28 @@ echo        Building RemotePC - Remote Desktop App
 echo ====================================================
 
 set CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe
-if not exist "%CSC%" (
-    set CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe
-)
+if exist "%CSC%" goto havecompiler
+set CSC=C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe
 
-if not exist "%CSC%" (
-    echo [ERROR] C# compiler (csc.exe) not found in Microsoft.NET Framework!
-    pause
-    exit /b 1
-)
+:havecompiler
+if exist "%CSC%" goto build
+echo [ERROR] C# compiler (csc.exe) not found in Microsoft.NET Framework!
+pause
+exit /b 1
 
-if not exist "bin\Release" (
-    mkdir "bin\Release"
-)
+:build
+if exist "bin\Release" goto compiledir
+mkdir "bin\Release"
 
+:compiledir
 echo Compiling C# source code...
 "%CSC%" /target:winexe /platform:anycpu /optimize+ /win32manifest:app.manifest /out:bin\Release\RemotePC.exe src\Common\*.cs src\Server\*.cs src\Client\*.cs src\UI\*.cs src\Program.cs /r:System.dll,System.Drawing.dll,System.Windows.Forms.dll
+if %ERRORLEVEL% EQU 0 goto ok
+echo [ERROR] Compilation failed!
+pause
+exit /b %ERRORLEVEL%
 
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Compilation failed!
-    pause
-    exit /b %ERRORLEVEL%
-)
-
+:ok
 echo.
 echo ====================================================
 echo  BUILD SUCCESSFUL!
