@@ -26,6 +26,7 @@ namespace RemotePC.Server
 
         private int _streamQuality = 60;
         private int _targetFps = 25;
+        private int _authAttempts;
         private long _currentFrameId = 0;
         private long _lastAckedFrameId = 0;
         private ScreenCapturer _capturer;
@@ -311,11 +312,36 @@ namespace RemotePC.Server
             Protocol.DeserializeAuthRequest(payload, out password, out clientName);
             _clientName = string.IsNullOrEmpty(clientName) ? "Remote Client" : clientName;
 
-            bool matches = string.IsNullOrEmpty(_serverPassword) || string.Equals(_serverPassword, password, StringComparison.Ordinal);
+            // Refuse outright if this address has already burned through its PIN guesses. This is
+            // what stops an internet-facing server from simply being brute-forced.
+            string blockReason;
+            if (!AuthGuard.IsAllowed(ClientEndPoint, out blockReason))
+            {
+                Log("Authentication blocked from " + ClientEndPoint + ": " + blockReason);
+                byte[] denied = Protocol.SerializeAuthResponse(false, blockReason, 0, 0);
+                Protocol.SendPacket(_stream, _writeLock, PacketType.AuthResponse, denied);
+                Stop();
+                return;
+            }
+
+            // A single connection only gets a few tries, so one socket cannot be reused to guess.
+            _authAttempts++;
+            if (_authAttempts > AuthGuard.MaxAttemptsPerConnection)
+            {
+                Log("Too many PIN attempts on one connection from " + ClientEndPoint + ". Disconnecting.");
+                byte[] denied = Protocol.SerializeAuthResponse(
+                    false, "Too many attempts on this connection. Reconnect to try again.", 0, 0);
+                Protocol.SendPacket(_stream, _writeLock, PacketType.AuthResponse, denied);
+                Stop();
+                return;
+            }
+
+            bool matches = string.IsNullOrEmpty(_serverPassword) || FixedTimeEquals(_serverPassword, password);
 
             if (matches)
             {
                 _isAuthenticated = true;
+                AuthGuard.RecordSuccess(ClientEndPoint);
                 Log(string.Format("Client authenticated successfully: {0} ({1})", _clientName, ClientEndPoint));
 
                 Rectangle bounds = ScreenCapturer.GetCurrentPhysicalScreenBounds(ScreenCaptureMode.PrimaryDisplay);
@@ -338,11 +364,46 @@ namespace RemotePC.Server
             }
             else
             {
-                Log(string.Format("Client authentication failed: {0} ({1})", _clientName, ClientEndPoint));
-                byte[] resp = Protocol.SerializeAuthResponse(false, "Invalid password/PIN", 0, 0);
+                AuthGuard.RecordFailure(ClientEndPoint);
+
+                int remaining = AuthGuard.RemainingAttempts(ClientEndPoint);
+                string message = remaining > 0
+                    ? "Invalid PIN. " + remaining + " attempt(s) left before this address is locked out."
+                    : "Invalid PIN. Further attempts from this address are locked out.";
+
+                Log(string.Format("Client authentication failed: {0} ({1}) - {2}",
+                    _clientName, ClientEndPoint, message));
+
+                byte[] resp = Protocol.SerializeAuthResponse(false, message, 0, 0);
                 Protocol.SendPacket(_stream, _writeLock, PacketType.AuthResponse, resp);
                 Stop();
             }
+        }
+
+        /// <summary>
+        /// Compares two secrets without leaking their contents through timing. A plain
+        /// string.Equals stops at the first differing character, which lets an attacker recover
+        /// the PIN one digit at a time by measuring response times.
+        /// </summary>
+        private static bool FixedTimeEquals(string expected, string actual)
+        {
+            if (expected == null || actual == null) return false;
+
+            byte[] a = Encoding.UTF8.GetBytes(expected);
+            byte[] b = Encoding.UTF8.GetBytes(actual);
+
+            // Compare a fixed number of bytes so the running time does not depend on the input.
+            int length = a.Length > b.Length ? a.Length : b.Length;
+            int diff = a.Length ^ b.Length;
+
+            for (int i = 0; i < length; i++)
+            {
+                byte x = i < a.Length ? a[i] : (byte)0;
+                byte y = i < b.Length ? b[i] : (byte)0;
+                diff |= x ^ y;
+            }
+
+            return diff == 0;
         }
 
         private void ScreenStreamLoop()

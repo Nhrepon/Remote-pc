@@ -33,7 +33,10 @@ $args = @(
     "/platform:anycpu",
     "/optimize+",
     "/win32manifest:app.manifest",
+    "/win32icon:assets\app.ico",
     "/out:bin\Release\RemotePC.exe",
+    "/resource:assets\app.ico,RemotePC.AppIcon.ico",
+    "/resource:assets\app-logo.png,RemotePC.AppLogo.png",
     "/r:System.dll,System.Drawing.dll,System.Windows.Forms.dll"
 ) + $sources
 

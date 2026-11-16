@@ -43,6 +43,10 @@ namespace RemotePC.UI
         private CheckBox _chkTrayOnClose;
         private Label _lblAutoStatus;
 
+        // Brand logo badges in the tab headers
+        private PictureBox _logoHost;
+        private PictureBox _logoClient;
+
         private RemoteServer _server;
 
         #endregion
@@ -81,7 +85,11 @@ namespace RemotePC.UI
 
         public MainForm()
         {
-            this.AutoScaleMode = AutoScaleMode.None;
+            // Scale the hand-written absolute layout with the monitor's DPI. Without this the
+            // fonts grow at 125%/150% display scaling while every hardcoded offset stays put,
+            // so the rows overlap and the right-hand buttons get clipped on high-DPI laptops.
+            this.AutoScaleDimensions = new SizeF(96f, 96f);
+            this.AutoScaleMode = AutoScaleMode.Dpi;
 
             _settings = AppSettings.Load();
 
@@ -97,6 +105,32 @@ namespace RemotePC.UI
             this.Shown += MainForm_Shown;
         }
 
+        /// <summary>
+        /// Keeps the window inside the visible desktop. After DPI scaling the minimum size can
+        /// exceed a small laptop screen, which would push the window's lower half off-screen.
+        /// </summary>
+        private void ClampToWorkingArea()
+        {
+            try
+            {
+                Rectangle wa = Screen.FromControl(this).WorkingArea;
+
+                Size min = this.MinimumSize;
+                if (min.Width > wa.Width) min.Width = wa.Width;
+                if (min.Height > wa.Height) min.Height = wa.Height;
+
+                int w = Math.Max(min.Width, Math.Min(this.Width, wa.Width));
+                int h = Math.Max(min.Height, Math.Min(this.Height, wa.Height));
+
+                this.MinimumSize = min;
+                this.Size = new Size(w, h);
+                this.Location = new Point(
+                    wa.X + Math.Max(0, (wa.Width - w) / 2),
+                    wa.Y + Math.Max(0, (wa.Height - h) / 2));
+            }
+            catch { }
+        }
+
         private void InitializeComponent()
         {
             this.Text = "Remote PC - Work Across 2 PCs";
@@ -105,6 +139,7 @@ namespace RemotePC.UI
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9.5f);
             this.BackColor = Color.FromArgb(245, 247, 250);
+            AppIcon.Apply(this);
 
             _tabControl = new TabControl();
             _tabControl.Dock = DockStyle.Fill;
@@ -130,9 +165,9 @@ namespace RemotePC.UI
         {
             _trayIcon = new NotifyIcon();
             _trayIcon.Text = "Remote PC";
-            // Use a simple built-in icon if no custom icon is embedded
-            try { _trayIcon.Icon = this.Icon ?? SystemIcons.Application; }
-            catch { _trayIcon.Icon = SystemIcons.Application; }
+            // Branded 16x16 from the embedded icon, falling back to the executable's own icon
+            try { _trayIcon.Icon = AppIcon.Small; }
+            catch { _trayIcon.Icon = this.Icon ?? SystemIcons.Application; }
 
             ContextMenu trayMenu = new ContextMenu();
             trayMenu.MenuItems.Add("Open Remote PC", delegate
@@ -171,6 +206,15 @@ namespace RemotePC.UI
             lblTitle.Location = new Point(20, top);
             lblTitle.AutoSize = true;
             _tabHost.Controls.Add(lblTitle);
+
+            // Brand logo badge in the header's top-right corner. Kept inside the 32px header
+            // band (y=13, height 30 -> bottom 43) so it clears the status panel at y=47 and
+            // never grows into it when the display scaling enlarges every control.
+            _logoHost = AppIcon.CreateLogoBadge(30);
+            _logoHost.Location = new Point(690, 13);
+            _logoHost.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tabHost.Controls.Add(_logoHost);
+
             top += 32;
 
             // 2. Status Panel
@@ -454,10 +498,43 @@ namespace RemotePC.UI
             }
         }
 
+        /// <summary>
+        /// Generates the access PIN. Ten digits rather than six: now that the server can open
+        /// its own port on the router it is reachable from the internet, and the search space
+        /// has to be large enough that guessing is hopeless even before the lockout kicks in.
+        /// Uses a cryptographic RNG so PINs are not predictable from one another.
+        /// </summary>
         private void GenerateRandomPin()
         {
-            Random r = new Random();
-            _txtHostPassword.Text = r.Next(100000, 999999).ToString();
+            _txtHostPassword.Text = GenerateSecurePin(10);
+        }
+
+        private static string GenerateSecurePin(int digits)
+        {
+            byte[] buffer = new byte[digits];
+            using (System.Security.Cryptography.RandomNumberGenerator rng =
+                System.Security.Cryptography.RandomNumberGenerator.Create())
+            {
+                // Rejection sampling keeps every digit equally likely; a plain modulo would
+                // bias the low digits.
+                int filled = 0;
+                while (filled < digits)
+                {
+                    rng.GetBytes(buffer);
+                    for (int i = filled; i < digits; i++)
+                    {
+                        if (buffer[i] < 250)
+                        {
+                            buffer[filled] = (byte)(buffer[i] % 10);
+                            filled++;
+                        }
+                    }
+                }
+            }
+
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(digits);
+            for (int i = 0; i < digits; i++) sb.Append((char)('0' + buffer[i]));
+            return sb.ToString();
         }
 
         private void BtnCopyIp_Click(object sender, EventArgs e)
@@ -508,16 +585,10 @@ namespace RemotePC.UI
                     // Ensure the firewall lets this port in, without ever asking the user to do it
                     EnsureFirewallRulesAsync(port);
 
-                    // Try UPnP port forward in background (non-blocking)
-                    UPnPPortForwarder.ForwardPortAsync(port, delegate(bool ok, string message)
-                    {
-                        LogHostLine(ok ? "[UPnP] " + message : "[UPnP] " + message);
-                        if (ok && !string.IsNullOrEmpty(UPnPPortForwarder.ExternalPublicIp))
-                        {
-                            LogHostLine(string.Format("[UPnP] Share this public address with PC 2: {0}:{1}",
-                                UPnPPortForwarder.ExternalPublicIp, port));
-                        }
-                    });
+                    // Open the router for internet access, hands-free. NAT-PMP is tried first
+                    // because plenty of routers answer it while their UPnP service is off; UPnP
+                    // is the fallback for routers that only speak IGD.
+                    OpenInternetAccessAsync(port);
                 }
                 catch (Exception ex)
                 {
@@ -537,7 +608,91 @@ namespace RemotePC.UI
 
                 try { NetworkDiscovery.StopBroadcasting(); }
                 catch { }
+
+                try { NatPmpPortMapper.Unmap(); }
+                catch { }
             }
+        }
+
+        /// <summary>
+        /// Makes this PC reachable from a different network with no router configuration.
+        /// Tries NAT-PMP first, then UPnP, and reports in the log which one worked - or that
+        /// neither is available, in which case the LAN address is still all the user needs.
+        /// </summary>
+        private void OpenInternetAccessAsync(int port)
+        {
+            NatPmpPortMapper.MapAsync(port, delegate(bool natOk, string natMessage)
+            {
+                LogHostLine("[NAT-PMP] " + natMessage);
+
+                if (natOk && !string.IsNullOrEmpty(NatPmpPortMapper.ExternalPublicIp))
+                {
+                    LogHostLine("[Internet] Ready from any network. Connect to "
+                        + NatPmpPortMapper.ExternalPublicIp + ":" + port);
+                    ShowInternetAddress(port, NatPmpPortMapper.ExternalPublicIp);
+                    return;
+                }
+
+                // NAT-PMP unavailable: fall back to UPnP IGD.
+                UPnPPortForwarder.ForwardPortAsync(port, delegate(bool upnpOk, string upnpMessage)
+                {
+                    LogHostLine("[UPnP] " + upnpMessage);
+
+                    if (upnpOk && !string.IsNullOrEmpty(UPnPPortForwarder.ExternalPublicIp))
+                    {
+                        LogHostLine("[Internet] Ready from any network. Connect to "
+                            + UPnPPortForwarder.ExternalPublicIp + ":" + port);
+                        ShowInternetAddress(port, UPnPPortForwarder.ExternalPublicIp);
+                        return;
+                    }
+
+                    LogHostLine("[Internet] No automatic router mapping available. PC 2 must be on "
+                        + "the same Wi-Fi, or use a Tailscale 100.x address, or forward port "
+                        + port + " in the router admin page by hand.");
+                });
+            });
+        }
+
+        /// <summary>
+        /// Puts the forwarded public address at the top of the Host tab's address list, so the
+        /// existing "Copy IP" button hands the user the exact string PC 2 has to dial. Without
+        /// this the mapping is invisible and the user still cannot connect from another network.
+        /// </summary>
+        private void ShowInternetAddress(int port, string publicIp)
+        {
+            if (this.IsDisposed) return;
+
+            if (this.InvokeRequired)
+            {
+                try { this.BeginInvoke(new Action<int, string>(ShowInternetAddress), port, publicIp); }
+                catch { }
+                return;
+            }
+
+            try
+            {
+                const string label = "★ Internet (port forwarded)";
+
+                // Replace any previous entry so repeated Start/Stop does not pile them up.
+                for (int i = _cboHostIps.Items.Count - 1; i >= 0; i--)
+                {
+                    NetworkAdapterInfo existing = _cboHostIps.Items[i] as NetworkAdapterInfo;
+                    if (existing != null && existing.Name == label) _cboHostIps.Items.RemoveAt(i);
+                }
+
+                NetworkAdapterInfo info = new NetworkAdapterInfo();
+                info.Name = label;
+                info.Description = "Works from any network - type this into PC 2";
+                info.IpAddress = publicIp;
+
+                _cboHostIps.Items.Insert(0, info);
+                _cboHostIps.SelectedIndex = 0;
+
+                _lblHostStatusText.Text = string.Format(
+                    "Server RUNNING on port {0}. From another network connect to {1}:{0}.",
+                    port, publicIp);
+            }
+            catch { }
         }
 
         private void Server_OnStatusChanged(bool running)
@@ -634,6 +789,14 @@ namespace RemotePC.UI
             lblTitle.Location = new Point(20, top);
             lblTitle.AutoSize = true;
             _tabClient.Controls.Add(lblTitle);
+
+            // Same header-band badge on the client tab (y=13, height 30 -> bottom 43, which
+            // clears the discovery box at y=50).
+            _logoClient = AppIcon.CreateLogoBadge(30);
+            _logoClient.Location = new Point(690, 13);
+            _logoClient.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _tabClient.Controls.Add(_logoClient);
+
             top += 35;
 
             // 2. LAN Auto-Discovery GroupBox
@@ -821,9 +984,12 @@ namespace RemotePC.UI
                 "  PC 1 (Host): Run RemotePC.exe → 'Allow Remote Access' tab → Start Server\n" +
                 "  PC 2 (Client): Run RemotePC.exe → 'Connect to Remote PC' tab → pick IP from dropdown OR type it in\n\n" +
                 "DIFFERENT NETWORKS (Home ↔ Office):\n" +
-                "  Option A: Install free Tailscale on both PCs → use the 100.x.x.x IP shown in this app (★ marked)\n" +
-                "  Option B: This app auto-tries UPnP port forwarding on your router (no manual config needed)\n" +
-                "  Option C: Forward TCP port 8888 manually on your router → use your public IP\n\n" +
+                "  Option A: Just start the server - it forwards its own port on the router (NAT-PMP,\n" +
+                "            then UPnP) and the log shows a public address like 118.179.196.152:8888 to type here\n" +
+                "  Option B: Install free Tailscale on both PCs → use the 100.x.x.x IP shown in this app (★ marked)\n" +
+                "  Option C: If the log says no automatic mapping, forward TCP port 8888 in the router by hand\n\n" +
+                "SECURITY: the PIN is locked out after " + AuthGuard.MaxFailuresPerAddress +
+                " wrong attempts, so guessing it is not practical.\n" +
                 "TIPS: No manual setup needed - the app adds itself to the Start Menu and opens the\n" +
                 "Windows Firewall on first run (approve the single UAC prompt when asked).\n" +
                 "Settings are auto-saved between sessions. Shortcuts: use the 'Zero-Work Automation' buttons on the Host tab.";
@@ -1036,6 +1202,7 @@ namespace RemotePC.UI
                 if (_pnlHostActions != null) _pnlHostActions.Width = cardW;
                 if (_gbHostAuto != null) _gbHostAuto.Width = cardW;
                 if (_pnlLogHeader != null) _pnlLogHeader.Width = cardW;
+                if (_logoHost != null) _logoHost.Left = _tabHost.ClientSize.Width - _logoHost.Width - 22;
 
                 if (_tlpHostNetwork != null && _cboHostIps != null)
                 {
@@ -1061,6 +1228,7 @@ namespace RemotePC.UI
 
                 if (_gbDiscovery != null) _gbDiscovery.Width = cardW;
                 if (_gbClientConnect != null) _gbClientConnect.Width = cardW;
+                if (_logoClient != null) _logoClient.Left = _tabClient.ClientSize.Width - _logoClient.Width - 22;
 
                 if (_rtbGuide != null)
                 {
@@ -1220,6 +1388,8 @@ namespace RemotePC.UI
 
         private void MainForm_Shown(object sender, EventArgs e)
         {
+            // DPI scaling has been applied by now, so the scaled minimum size is known.
+            ClampToWorkingArea();
             UpdateResponsiveLayout();
 
             // Handle -minimized arg

@@ -29,7 +29,7 @@ exit /b 0
 :test
 echo Compiling test suite...
 if not exist "bin\Test" mkdir "bin\Test"
-"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /target:exe /platform:anycpu /out:bin\Test\TestRunner.exe tests\TestRunner.cs src\Common\*.cs /r:System.dll,System.Drawing.dll,System.Windows.Forms.dll
+"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /target:exe /platform:anycpu /out:bin\Test\TestRunner.exe tests\TestRunner.cs src\Common\*.cs /resource:assets\app-logo.png,RemotePC.AppLogo.png /r:System.dll,System.Drawing.dll,System.Windows.Forms.dll
 if errorlevel 1 exit /b 1
 echo Running tests...
 "%~dp0bin\Test\TestRunner.exe"

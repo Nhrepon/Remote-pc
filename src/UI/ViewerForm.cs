@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 using RemotePC.Client;
+using RemotePC.Common;
 
 namespace RemotePC.UI
 {
@@ -62,6 +63,11 @@ namespace RemotePC.UI
 
         private void InitializeComponent()
         {
+            // Absolute pixel offsets must scale with the monitor DPI, or the toolbar and the
+            // status bar overlap each other on a 125%/150% laptop display.
+            this.AutoScaleDimensions = new SizeF(96f, 96f);
+            this.AutoScaleMode = AutoScaleMode.Dpi;
+
             this.Text = "Remote Desktop - " + _client.HostAddress + ":" + _client.HostPort;
             this.Size = new Size(1280, 800);
             this.MinimumSize = new Size(1050, 600);
@@ -69,6 +75,7 @@ namespace RemotePC.UI
             this.Font = new Font("Segoe UI", 9f);
             this.BackColor = Color.FromArgb(20, 20, 20);
             this.KeyPreview = true;
+            AppIcon.Apply(this);
 
             #region Top Toolbar
 

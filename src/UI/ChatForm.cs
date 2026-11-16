@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using RemotePC.Common;
 
 namespace RemotePC.UI
 {
@@ -19,8 +20,11 @@ namespace RemotePC.UI
 
         private void InitializeComponent(string title)
         {
+            this.AutoScaleDimensions = new SizeF(96f, 96f);
+            this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Text = "Chat - " + title;
             this.Size = new Size(420, 500);
+            AppIcon.Apply(this);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9.5f);
             this.BackColor = Color.FromArgb(245, 247, 250);

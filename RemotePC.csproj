@@ -13,6 +13,7 @@
     <OutputPath>bin\Release\</OutputPath>
     <DoNotCopyLocalIfInGac>true</DoNotCopyLocalIfInGac>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <PlatformTarget>AnyCPU</PlatformTarget>
@@ -46,10 +47,13 @@
     <Compile Include="src\Common\ScreenCapturer.cs" />
     <Compile Include="src\Common\SystemInfo.cs" />
     <Compile Include="src\Common\AppSettings.cs" />
+    <Compile Include="src\Common\AppIcon.cs" />
     <Compile Include="src\Common\AppShortcutHelper.cs" />
     <Compile Include="src\Common\FirewallHelper.cs" />
     <Compile Include="src\Common\NetworkDiscovery.cs" />
     <Compile Include="src\Common\UPnPPortForwarder.cs" />
+    <Compile Include="src\Common\NatPmpPortMapper.cs" />
+    <Compile Include="src\Common\AuthGuard.cs" />
     <Compile Include="src\Server\ServerSession.cs" />
     <Compile Include="src\Server\RemoteServer.cs" />
     <Compile Include="src\Client\RemoteClient.cs" />
@@ -59,6 +63,14 @@
     <Compile Include="src\UI\ViewerForm.cs" />
     <Compile Include="src\UI\MainForm.cs" />
     <Compile Include="src\Program.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="assets\app.ico">
+      <LogicalName>RemotePC.AppIcon.ico</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\app-logo.png">
+      <LogicalName>RemotePC.AppLogo.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

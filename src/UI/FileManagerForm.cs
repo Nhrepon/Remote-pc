@@ -50,8 +50,11 @@ namespace RemotePC.UI
 
         private void InitializeComponent()
         {
+            this.AutoScaleDimensions = new SizeF(96f, 96f);
+            this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Text = "Remote File Manager - Transfer Files";
             this.Size = new Size(950, 600);
+            AppIcon.Apply(this);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9f);
             this.BackColor = Color.FromArgb(245, 247, 250);

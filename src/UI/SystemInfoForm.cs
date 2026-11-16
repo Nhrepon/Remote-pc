@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using RemotePC.Common;
 
 namespace RemotePC.UI
 {
@@ -16,8 +17,11 @@ namespace RemotePC.UI
 
         private void InitializeComponent(string systemInfo)
         {
+            this.AutoScaleDimensions = new SizeF(96f, 96f);
+            this.AutoScaleMode = AutoScaleMode.Dpi;
             this.Text = "Remote System Information";
             this.Size = new Size(500, 420);
+            AppIcon.Apply(this);
             this.StartPosition = FormStartPosition.CenterParent;
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;

@@ -20,7 +20,7 @@ mkdir "bin\Release"
 
 :compiledir
 echo Compiling C# source code...
-"%CSC%" /target:winexe /platform:anycpu /optimize+ /win32manifest:app.manifest /out:bin\Release\RemotePC.exe src\Common\*.cs src\Server\*.cs src\Client\*.cs src\UI\*.cs src\Program.cs /r:System.dll,System.Drawing.dll,System.Windows.Forms.dll
+"%CSC%" /target:winexe /platform:anycpu /optimize+ /win32manifest:app.manifest /win32icon:assets\app.ico /out:bin\Release\RemotePC.exe /resource:assets\app.ico,RemotePC.AppIcon.ico /resource:assets\app-logo.png,RemotePC.AppLogo.png src\Common\*.cs src\Server\*.cs src\Client\*.cs src\UI\*.cs src\Program.cs /r:System.dll,System.Drawing.dll,System.Windows.Forms.dll
 if %ERRORLEVEL% EQU 0 goto ok
 echo [ERROR] Compilation failed!
 pause

@@ -31,6 +31,7 @@ A fast, lightweight, and self-contained **Remote Desktop & Remote Control** appl
   - Inspect remote machine name, user, OS version, 64-bit architecture, CPU cores, screen resolution, and system uptime.
 
 - **🔒 Security & Ease of Use:**
+  - Branded app icon and logo embedded inside `RemotePC.exe` — the same artwork shows on the second PC with no extra files to copy.
   - Single executable (`RemotePC.exe` ~86 KB) contains **both Host (Server) and Client (Viewer)** modes.
   - Auto-generated or custom access PIN / password.
   - Option to toggle view-only vs full control.
@@ -121,6 +122,9 @@ for %R in ("RemotePC Server TCP 8888" "RemotePC LAN Discovery UDP 8889" "RemoteP
 
 ```
 remote-pc/
+├── assets/
+│   ├── app.ico                // Multi-size app icon (16→256) - embedded in the .exe
+│   └── app-logo.png           // Square logo shown in the tab headers
 ├── bin/
 │   └── Release/
 │       └── RemotePC.exe       <-- Pre-compiled ready-to-run executable (~86 KB)
@@ -130,7 +134,9 @@ remote-pc/
 │   │   ├── Protocol.cs        // Binary packet framing & serialization
 │   │   ├── InputSimulator.cs  // Mouse & keyboard simulation
 │   │   ├── ScreenCapturer.cs  // GDI+ screen capture, cursor drawing, JPEG compression
-│   │   └── SystemInfo.cs      // Network IP detection & hardware specs
+│   │   ├── SystemInfo.cs      // Network IP detection & hardware specs
+│   │   ├── AppIcon.cs         // Embedded app icon & logo loader
+│   │   └── FirewallHelper.cs  // Zero-touch Windows Firewall rule automation
 │   ├── Server/
 │   │   ├── RemoteServer.cs    // Multi-threaded TCP listener
 │   │   └── ServerSession.cs   // Client session management & screen stream loop
