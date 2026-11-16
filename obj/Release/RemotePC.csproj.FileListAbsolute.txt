@@ -1,0 +1,11 @@
+E:\NH\C#\remote-pc\obj\Release\RemotePC.csprojResolveAssemblyReference.cache
+E:\NH\C#\remote-pc\bin\Release\RemotePC.exe
+E:\NH\C#\remote-pc\bin\Release\RemotePC.pdb
+E:\NH\C#\remote-pc\bin\Release\mscorlib.dll
+E:\NH\C#\remote-pc\bin\Release\normidna.nlp
+E:\NH\C#\remote-pc\bin\Release\normnfc.nlp
+E:\NH\C#\remote-pc\bin\Release\normnfd.nlp
+E:\NH\C#\remote-pc\bin\Release\normnfkc.nlp
+E:\NH\C#\remote-pc\bin\Release\normnfkd.nlp
+E:\NH\C#\remote-pc\obj\Release\RemotePC.exe
+E:\NH\C#\remote-pc\obj\Release\RemotePC.pdb

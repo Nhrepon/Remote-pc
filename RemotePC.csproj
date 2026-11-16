@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{4F8B3394-B6E5-45C0-9426-5F7D0DF31D42}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>RemotePC</RootNamespace>
+    <AssemblyName>RemotePC</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <OutputPath>bin\Release\</OutputPath>
+    <DoNotCopyLocalIfInGac>true</DoNotCopyLocalIfInGac>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System"><Private>False</Private></Reference>
+    <Reference Include="System.Core"><Private>False</Private></Reference>
+    <Reference Include="System.Drawing"><Private>False</Private></Reference>
+    <Reference Include="System.Windows.Forms"><Private>False</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="src\Common\NativeMethods.cs" />
+    <Compile Include="src\Common\Protocol.cs" />
+    <Compile Include="src\Common\InputSimulator.cs" />
+    <Compile Include="src\Common\ScreenCapturer.cs" />
+    <Compile Include="src\Common\SystemInfo.cs" />
+    <Compile Include="src\Server\ServerSession.cs" />
+    <Compile Include="src\Server\RemoteServer.cs" />
+    <Compile Include="src\Client\RemoteClient.cs" />
+    <Compile Include="src\UI\SystemInfoForm.cs" />
+    <Compile Include="src\UI\ChatForm.cs" />
+    <Compile Include="src\UI\FileManagerForm.cs" />
+    <Compile Include="src\UI\ViewerForm.cs" />
+    <Compile Include="src\UI\MainForm.cs" />
+    <Compile Include="src\Program.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
