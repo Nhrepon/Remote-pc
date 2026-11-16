@@ -19,15 +19,21 @@ namespace RemotePC.UI
 
         private Label _lblHostStatusIndicator;
         private Label _lblHostStatusText;
+        private Panel _pnlHostStatus;
+        private GroupBox _gbHostNetwork;
         private ComboBox _cboHostIps;
         private Button _btnCopyIp;
         private NumericUpDown _numHostPort;
         private TextBox _txtHostPassword;
         private Button _btnToggleHostPass;
         private Button _btnGenPin;
+        private TableLayoutPanel _tlpHostNetwork;
+        private TableLayoutPanel _pnlHostActions;
         private CheckBox _chkAllowControl;
         private CheckBox _chkAllowFiles;
         private Button _btnToggleServer;
+        private TableLayoutPanel _pnlLogHeader;
+        private Label _lblHostLogTitle;
         private ListBox _lbHostLog;
         private Button _btnHostChat;
 
@@ -37,12 +43,15 @@ namespace RemotePC.UI
 
         #region Client Controls
 
+        private GroupBox _gbClientConnect;
+        private TableLayoutPanel _tlpClientConnect;
         private ComboBox _cboClientIp;
         private NumericUpDown _numClientPort;
         private TextBox _txtClientPassword;
         private Button _btnToggleClientPass;
         private Button _btnConnect;
         private Label _lblClientStatus;
+        private Label _lblGuideTitle;
         private RichTextBox _rtbGuide;
 
         private readonly string _historyFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RemotePC_History.txt");
@@ -51,18 +60,22 @@ namespace RemotePC.UI
 
         public MainForm()
         {
+            this.AutoScaleMode = AutoScaleMode.None;
             InitializeComponent();
             InitializeHostTab();
             InitializeClientTab();
             LoadIpHistory();
             GenerateRandomPin();
+
+            this.Resize += MainForm_Resize;
+            this.Shown += delegate { UpdateResponsiveLayout(); };
         }
 
         private void InitializeComponent()
         {
             this.Text = "Remote PC - Work Across 2 PCs";
-            this.Size = new Size(680, 560);
-            this.MinimumSize = new Size(650, 520);
+            this.Size = new Size(760, 640);
+            this.MinimumSize = new Size(700, 580);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9.5f);
             this.BackColor = Color.FromArgb(245, 247, 250);
@@ -74,10 +87,12 @@ namespace RemotePC.UI
 
             _tabHost = new TabPage("  Allow Remote Access (Host)  ");
             _tabHost.BackColor = Color.White;
+            _tabHost.AutoScroll = false;
             _tabControl.TabPages.Add(_tabHost);
 
             _tabClient = new TabPage("  Connect to Remote PC (Client)  ");
             _tabClient.BackColor = Color.White;
+            _tabClient.AutoScroll = false;
             _tabControl.TabPages.Add(_tabClient);
 
             this.Controls.Add(_tabControl);
@@ -89,22 +104,22 @@ namespace RemotePC.UI
         {
             int top = 15;
 
-            // Header Banner
+            // 1. Header Banner
             Label lblTitle = new Label();
             lblTitle.Text = "Host Mode: Allow Another PC to Control This PC";
             lblTitle.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
             lblTitle.Location = new Point(20, top);
             lblTitle.AutoSize = true;
             _tabHost.Controls.Add(lblTitle);
-            top += 30;
+            top += 32;
 
-            // Status Panel
-            Panel pnlStatus = new Panel();
-            pnlStatus.Location = new Point(20, top);
-            pnlStatus.Size = new Size(620, 36);
-            pnlStatus.BackColor = Color.FromArgb(240, 243, 246);
-            pnlStatus.BorderStyle = BorderStyle.FixedSingle;
-            _tabHost.Controls.Add(pnlStatus);
+            // 2. Status Panel
+            _pnlHostStatus = new Panel();
+            _pnlHostStatus.Location = new Point(20, top);
+            _pnlHostStatus.Size = new Size(690, 36);
+            _pnlHostStatus.BackColor = Color.FromArgb(240, 243, 246);
+            _pnlHostStatus.BorderStyle = BorderStyle.FixedSingle;
+            _tabHost.Controls.Add(_pnlHostStatus);
 
             _lblHostStatusIndicator = new Label();
             _lblHostStatusIndicator.Text = "●";
@@ -112,46 +127,64 @@ namespace RemotePC.UI
             _lblHostStatusIndicator.ForeColor = Color.Red;
             _lblHostStatusIndicator.Location = new Point(10, 4);
             _lblHostStatusIndicator.Size = new Size(25, 25);
-            pnlStatus.Controls.Add(_lblHostStatusIndicator);
+            _pnlHostStatus.Controls.Add(_lblHostStatusIndicator);
 
             _lblHostStatusText = new Label();
             _lblHostStatusText.Text = "Server Stopped. Click 'Start Server' to allow connections.";
             _lblHostStatusText.Location = new Point(35, 8);
             _lblHostStatusText.AutoSize = true;
-            pnlStatus.Controls.Add(_lblHostStatusText);
-            top += 48;
+            _pnlHostStatus.Controls.Add(_lblHostStatusText);
+            top += 46;
 
-            // Network Configuration Card
-            GroupBox gbNetwork = new GroupBox();
-            gbNetwork.Text = " Connection Credentials & Address ";
-            gbNetwork.Location = new Point(20, top);
-            gbNetwork.Size = new Size(620, 135);
-            _tabHost.Controls.Add(gbNetwork);
+            // 3. Network Configuration Card (TableLayoutPanel with AutoSize columns - immune to DPI overlap!)
+            _gbHostNetwork = new GroupBox();
+            _gbHostNetwork.Text = " Connection Credentials & Address ";
+            _gbHostNetwork.Location = new Point(20, top);
+            _gbHostNetwork.Size = new Size(690, 155);
+            _gbHostNetwork.Padding = new Padding(12, 10, 12, 10);
+            _tabHost.Controls.Add(_gbHostNetwork);
 
-            Label lblIp = new Label() { Text = "This PC's IPv4 Address:", Location = new Point(15, 26), AutoSize = true };
-            gbNetwork.Controls.Add(lblIp);
+            _tlpHostNetwork = new TableLayoutPanel();
+            _tlpHostNetwork.Dock = DockStyle.Fill;
+            _tlpHostNetwork.ColumnCount = 2;
+            _tlpHostNetwork.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            _tlpHostNetwork.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            _tlpHostNetwork.RowCount = 3;
+            _tlpHostNetwork.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+            _tlpHostNetwork.RowStyles.Add(new RowStyle(SizeType.Absolute, 38f));
+            _tlpHostNetwork.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+            _gbHostNetwork.Controls.Add(_tlpHostNetwork);
 
-            _cboHostIps = new ComboBox() { Location = new Point(165, 23), Size = new Size(340, 25), DropDownStyle = ComboBoxStyle.DropDownList };
+            // Row 0: IP Address
+            Label lblIp = new Label() { Text = "This PC's IPv4 Address:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            _tlpHostNetwork.Controls.Add(lblIp, 0, 0);
+
+            FlowLayoutPanel flowIp = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
+            _cboHostIps = new ComboBox() { Width = 340, DropDownStyle = ComboBoxStyle.DropDownList };
             RefreshHostIps();
-            gbNetwork.Controls.Add(_cboHostIps);
+            flowIp.Controls.Add(_cboHostIps);
 
-            _btnCopyIp = new Button() { Text = "Copy IP", Location = new Point(515, 22), Size = new Size(90, 27) };
+            _btnCopyIp = new Button() { Text = "Copy IP", Width = 95, Height = 27, Margin = new Padding(8, 0, 0, 0) };
             _btnCopyIp.Click += BtnCopyIp_Click;
-            gbNetwork.Controls.Add(_btnCopyIp);
+            flowIp.Controls.Add(_btnCopyIp);
+            _tlpHostNetwork.Controls.Add(flowIp, 1, 0);
 
-            Label lblPort = new Label() { Text = "Port:", Location = new Point(15, 62), AutoSize = true };
-            gbNetwork.Controls.Add(lblPort);
+            // Row 1: Port
+            Label lblPort = new Label() { Text = "Port:", AutoSize = true, Margin = new Padding(0, 6, 15, 0) };
+            _tlpHostNetwork.Controls.Add(lblPort, 0, 1);
 
-            _numHostPort = new NumericUpDown() { Location = new Point(165, 60), Size = new Size(90, 25), Minimum = 1024, Maximum = 65535, Value = 8888 };
-            gbNetwork.Controls.Add(_numHostPort);
+            _numHostPort = new NumericUpDown() { Width = 100, Minimum = 1024, Maximum = 65535, Value = 8888, Margin = new Padding(0, 3, 0, 0) };
+            _tlpHostNetwork.Controls.Add(_numHostPort, 1, 1);
 
-            Label lblPass = new Label() { Text = "Security PIN / Password:", Location = new Point(15, 98), AutoSize = true };
-            gbNetwork.Controls.Add(lblPass);
+            // Row 2: Security PIN
+            Label lblPass = new Label() { Text = "Security PIN / Password:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            _tlpHostNetwork.Controls.Add(lblPass, 0, 2);
 
-            _txtHostPassword = new TextBox() { Location = new Point(165, 96), Size = new Size(200, 25), PasswordChar = '•' };
-            gbNetwork.Controls.Add(_txtHostPassword);
+            FlowLayoutPanel flowPass = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
+            _txtHostPassword = new TextBox() { Width = 180, PasswordChar = '•' };
+            flowPass.Controls.Add(_txtHostPassword);
 
-            _btnToggleHostPass = new Button() { Text = "Show", Location = new Point(372, 95), Size = new Size(60, 27) };
+            _btnToggleHostPass = new Button() { Text = "Show", Width = 65, Height = 27, Margin = new Padding(6, 0, 0, 0) };
             _btnToggleHostPass.Click += delegate
             {
                 if (_txtHostPassword.PasswordChar == '•')
@@ -165,20 +198,31 @@ namespace RemotePC.UI
                     _btnToggleHostPass.Text = "Show";
                 }
             };
-            gbNetwork.Controls.Add(_btnToggleHostPass);
+            flowPass.Controls.Add(_btnToggleHostPass);
 
-            _btnGenPin = new Button() { Text = "Random PIN", Location = new Point(440, 95), Size = new Size(95, 27) };
+            _btnGenPin = new Button() { Text = "Random PIN", Width = 105, Height = 27, Margin = new Padding(6, 0, 0, 0) };
             _btnGenPin.Click += delegate { GenerateRandomPin(); };
-            gbNetwork.Controls.Add(_btnGenPin);
+            flowPass.Controls.Add(_btnGenPin);
+            _tlpHostNetwork.Controls.Add(flowPass, 1, 2);
 
-            top += 145;
+            top += 165;
 
-            // Permissions & Controls
-            _chkAllowControl = new CheckBox() { Text = "Allow Mouse & Keyboard Control", Checked = true, Location = new Point(25, top), AutoSize = true };
-            _tabHost.Controls.Add(_chkAllowControl);
+            // 4. Action Row (Checkboxes on Left, Start Server Button on Right)
+            _pnlHostActions = new TableLayoutPanel();
+            _pnlHostActions.Location = new Point(20, top);
+            _pnlHostActions.Size = new Size(690, 44);
+            _pnlHostActions.ColumnCount = 2;
+            _pnlHostActions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            _pnlHostActions.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            _pnlHostActions.RowCount = 1;
+            _tabHost.Controls.Add(_pnlHostActions);
 
-            _chkAllowFiles = new CheckBox() { Text = "Allow Remote File Transfer", Checked = true, Location = new Point(265, top), AutoSize = true };
-            _tabHost.Controls.Add(_chkAllowFiles);
+            FlowLayoutPanel flowCheckboxes = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Margin = new Padding(0) };
+            _chkAllowControl = new CheckBox() { Text = "Allow Mouse & Keyboard Control", Checked = true, AutoSize = true, Margin = new Padding(0, 8, 20, 0) };
+            _chkAllowFiles = new CheckBox() { Text = "Allow Remote File Transfer", Checked = true, AutoSize = true, Margin = new Padding(0, 8, 0, 0) };
+            flowCheckboxes.Controls.Add(_chkAllowControl);
+            flowCheckboxes.Controls.Add(_chkAllowFiles);
+            _pnlHostActions.Controls.Add(flowCheckboxes, 0, 0);
 
             _btnToggleServer = new Button();
             _btnToggleServer.Text = "Start Server";
@@ -187,28 +231,38 @@ namespace RemotePC.UI
             _btnToggleServer.ForeColor = Color.White;
             _btnToggleServer.FlatStyle = FlatStyle.Flat;
             _btnToggleServer.FlatAppearance.BorderSize = 0;
-            _btnToggleServer.Location = new Point(480, top - 6);
-            _btnToggleServer.Size = new Size(160, 36);
+            _btnToggleServer.Size = new Size(185, 36);
+            _btnToggleServer.Margin = new Padding(0);
             _btnToggleServer.Click += BtnToggleServer_Click;
-            _tabHost.Controls.Add(_btnToggleServer);
+            _pnlHostActions.Controls.Add(_btnToggleServer, 1, 0);
 
-            top += 42;
+            top += 48;
 
-            // Session Activity Log
-            Label lblLog = new Label() { Text = "Activity & Connection Log:", Location = new Point(20, top), AutoSize = true };
-            _tabHost.Controls.Add(lblLog);
+            // 5. Activity Log Header
+            _pnlLogHeader = new TableLayoutPanel();
+            _pnlLogHeader.Location = new Point(20, top);
+            _pnlLogHeader.Size = new Size(690, 32);
+            _pnlLogHeader.ColumnCount = 2;
+            _pnlLogHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            _pnlLogHeader.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            _pnlLogHeader.RowCount = 1;
+            _tabHost.Controls.Add(_pnlLogHeader);
 
-            _btnHostChat = new Button() { Text = "Chat With Client", Location = new Point(490, top - 4), Size = new Size(150, 26), Enabled = false };
+            _lblHostLogTitle = new Label() { Text = "Activity & Connection Log:", AutoSize = true, Margin = new Padding(0, 5, 0, 0) };
+            _pnlLogHeader.Controls.Add(_lblHostLogTitle, 0, 0);
+
+            _btnHostChat = new Button() { Text = "Chat With Client", Width = 150, Height = 28, Enabled = false, Margin = new Padding(0) };
             _btnHostChat.Click += BtnHostChat_Click;
-            _tabHost.Controls.Add(_btnHostChat);
+            _pnlLogHeader.Controls.Add(_btnHostChat, 1, 0);
 
-            top += 25;
+            top += 34;
 
+            // 6. Log Box
             _lbHostLog = new ListBox();
             _lbHostLog.Location = new Point(20, top);
-            _lbHostLog.Size = new Size(620, 150);
-            _lbHostLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
-            _lbHostLog.Font = new Font("Consolas", 9f);
+            _lbHostLog.Size = new Size(690, 160);
+            _lbHostLog.Font = new Font("Consolas", 9.5f);
+            _lbHostLog.IntegralHeight = false;
             _tabHost.Controls.Add(_lbHostLog);
         }
 
@@ -365,7 +419,7 @@ namespace RemotePC.UI
         {
             int top = 15;
 
-            // Title
+            // 1. Title
             Label lblTitle = new Label();
             lblTitle.Text = "Client Mode: Connect to & Control Remote PC";
             lblTitle.Font = new Font("Segoe UI", 12f, FontStyle.Bold);
@@ -374,32 +428,49 @@ namespace RemotePC.UI
             _tabClient.Controls.Add(lblTitle);
             top += 35;
 
-            // Connection Box
-            GroupBox gbConnect = new GroupBox();
-            gbConnect.Text = " Remote Host Connection Details ";
-            gbConnect.Location = new Point(20, top);
-            gbConnect.Size = new Size(620, 155);
-            _tabClient.Controls.Add(gbConnect);
+            // 2. Connection Details GroupBox (TableLayoutPanel with AutoSize columns - immune to DPI overlap!)
+            _gbClientConnect = new GroupBox();
+            _gbClientConnect.Text = " Remote Host Connection Details ";
+            _gbClientConnect.Location = new Point(20, top);
+            _gbClientConnect.Size = new Size(690, 168);
+            _gbClientConnect.Padding = new Padding(12, 10, 12, 10);
+            _tabClient.Controls.Add(_gbClientConnect);
 
-            Label lblIp = new Label() { Text = "Remote PC IP Address:", Location = new Point(15, 30), AutoSize = true };
-            gbConnect.Controls.Add(lblIp);
+            _tlpClientConnect = new TableLayoutPanel();
+            _tlpClientConnect.Dock = DockStyle.Fill;
+            _tlpClientConnect.ColumnCount = 2;
+            _tlpClientConnect.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            _tlpClientConnect.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            _tlpClientConnect.RowCount = 3;
+            _tlpClientConnect.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+            _tlpClientConnect.RowStyles.Add(new RowStyle(SizeType.Absolute, 40f));
+            _tlpClientConnect.RowStyles.Add(new RowStyle(SizeType.Absolute, 46f));
+            _gbClientConnect.Controls.Add(_tlpClientConnect);
 
-            _cboClientIp = new ComboBox() { Location = new Point(180, 27), Size = new Size(240, 25) };
-            gbConnect.Controls.Add(_cboClientIp);
+            // Row 0: IP + Port
+            Label lblIp = new Label() { Text = "Remote PC IP Address:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            _tlpClientConnect.Controls.Add(lblIp, 0, 0);
 
-            Label lblPort = new Label() { Text = "Port:", Location = new Point(435, 30), AutoSize = true };
-            gbConnect.Controls.Add(lblPort);
+            FlowLayoutPanel flowIpPort = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
+            _cboClientIp = new ComboBox() { Width = 260 };
+            flowIpPort.Controls.Add(_cboClientIp);
 
-            _numClientPort = new NumericUpDown() { Location = new Point(475, 28), Size = new Size(80, 25), Minimum = 1024, Maximum = 65535, Value = 8888 };
-            gbConnect.Controls.Add(_numClientPort);
+            Label lblPort = new Label() { Text = "Port:", AutoSize = true, Margin = new Padding(15, 6, 6, 0) };
+            flowIpPort.Controls.Add(lblPort);
 
-            Label lblPass = new Label() { Text = "Access PIN / Password:", Location = new Point(15, 68), AutoSize = true };
-            gbConnect.Controls.Add(lblPass);
+            _numClientPort = new NumericUpDown() { Width = 90, Minimum = 1024, Maximum = 65535, Value = 8888 };
+            flowIpPort.Controls.Add(_numClientPort);
+            _tlpClientConnect.Controls.Add(flowIpPort, 1, 0);
 
-            _txtClientPassword = new TextBox() { Location = new Point(180, 66), Size = new Size(240, 25), PasswordChar = '•' };
-            gbConnect.Controls.Add(_txtClientPassword);
+            // Row 1: Access PIN
+            Label lblPass = new Label() { Text = "Access PIN / Password:", AutoSize = true, Margin = new Padding(0, 8, 15, 0) };
+            _tlpClientConnect.Controls.Add(lblPass, 0, 1);
 
-            _btnToggleClientPass = new Button() { Text = "Show", Location = new Point(430, 65), Size = new Size(60, 27) };
+            FlowLayoutPanel flowPass = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 3, 0, 0) };
+            _txtClientPassword = new TextBox() { Width = 260, PasswordChar = '•' };
+            flowPass.Controls.Add(_txtClientPassword);
+
+            _btnToggleClientPass = new Button() { Text = "Show", Width = 65, Height = 27, Margin = new Padding(6, 0, 0, 0) };
             _btnToggleClientPass.Click += delegate
             {
                 if (_txtClientPassword.PasswordChar == '•')
@@ -413,8 +484,14 @@ namespace RemotePC.UI
                     _btnToggleClientPass.Text = "Show";
                 }
             };
-            gbConnect.Controls.Add(_btnToggleClientPass);
+            flowPass.Controls.Add(_btnToggleClientPass);
+            _tlpClientConnect.Controls.Add(flowPass, 1, 1);
 
+            // Row 2: Connect Button & Status
+            Label lblBlank = new Label() { Text = "", AutoSize = true, Margin = new Padding(0) };
+            _tlpClientConnect.Controls.Add(lblBlank, 0, 2);
+
+            FlowLayoutPanel flowConnect = new FlowLayoutPanel() { AutoSize = true, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Margin = new Padding(0, 4, 0, 0) };
             _btnConnect = new Button();
             _btnConnect.Text = "Connect to Remote PC";
             _btnConnect.Font = new Font("Segoe UI", 10.5f, FontStyle.Bold);
@@ -422,32 +499,32 @@ namespace RemotePC.UI
             _btnConnect.ForeColor = Color.White;
             _btnConnect.FlatStyle = FlatStyle.Flat;
             _btnConnect.FlatAppearance.BorderSize = 0;
-            _btnConnect.Location = new Point(180, 105);
-            _btnConnect.Size = new Size(240, 36);
+            _btnConnect.Size = new Size(260, 36);
             _btnConnect.Click += BtnConnect_Click;
-            gbConnect.Controls.Add(_btnConnect);
+            flowConnect.Controls.Add(_btnConnect);
 
             _lblClientStatus = new Label();
             _lblClientStatus.Text = "";
             _lblClientStatus.ForeColor = Color.FromArgb(80, 80, 80);
-            _lblClientStatus.Location = new Point(430, 113);
             _lblClientStatus.AutoSize = true;
-            gbConnect.Controls.Add(_lblClientStatus);
+            _lblClientStatus.Margin = new Padding(12, 10, 0, 0);
+            flowConnect.Controls.Add(_lblClientStatus);
+            _tlpClientConnect.Controls.Add(flowConnect, 1, 2);
 
-            top += 165;
+            top += 178;
 
-            // Connection Guide
-            Label lblGuide = new Label() { Text = "Quick 2-PC Setup Guide:", Location = new Point(20, top), AutoSize = true, Font = new Font("Segoe UI", 10f, FontStyle.Bold) };
-            _tabClient.Controls.Add(lblGuide);
-            top += 25;
+            // 3. Connection Guide
+            _lblGuideTitle = new Label() { Text = "Quick 2-PC Setup Guide:", Location = new Point(20, top), AutoSize = true, Font = new Font("Segoe UI", 10f, FontStyle.Bold) };
+            _tabClient.Controls.Add(_lblGuideTitle);
+            top += 26;
 
             _rtbGuide = new RichTextBox();
             _rtbGuide.Location = new Point(20, top);
-            _rtbGuide.Size = new Size(620, 210);
-            _rtbGuide.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            _rtbGuide.Size = new Size(690, 220);
             _rtbGuide.ReadOnly = true;
             _rtbGuide.BackColor = Color.FromArgb(248, 249, 251);
             _rtbGuide.BorderStyle = BorderStyle.FixedSingle;
+            _rtbGuide.Font = new Font("Segoe UI", 9.5f);
             _rtbGuide.Text =
                 "HOW TO CONNECT YOUR 2 PCS:\n\n" +
                 "1. ON PC 1 (The PC to control/host):\n" +
@@ -566,6 +643,64 @@ namespace RemotePC.UI
                 }
             }
             catch { }
+        }
+
+        #endregion
+
+        #region Responsive Layout
+
+        private void MainForm_Resize(object sender, EventArgs e)
+        {
+            UpdateResponsiveLayout();
+        }
+
+        private void UpdateResponsiveLayout()
+        {
+            if (_tabHost == null || _tabClient == null) return;
+
+            int hostW = _tabHost.ClientSize.Width;
+            int hostH = _tabHost.ClientSize.Height;
+
+            if (hostW > 60 && hostH > 60)
+            {
+                int cardW = Math.Max(200, hostW - 40);
+
+                if (_pnlHostStatus != null) _pnlHostStatus.Width = cardW;
+                if (_gbHostNetwork != null) _gbHostNetwork.Width = cardW;
+                if (_pnlHostActions != null) _pnlHostActions.Width = cardW;
+                if (_pnlLogHeader != null) _pnlLogHeader.Width = cardW;
+
+                if (_tlpHostNetwork != null && _cboHostIps != null)
+                {
+                    int labelColW = _tlpHostNetwork.GetColumnWidths().Length > 0 ? _tlpHostNetwork.GetColumnWidths()[0] : 180;
+                    int maxCboW = cardW - labelColW - 130;
+                    _cboHostIps.Width = Math.Max(180, Math.Min(380, maxCboW));
+                }
+
+                if (_lbHostLog != null)
+                {
+                    _lbHostLog.Width = cardW;
+                    int logHeight = hostH - _lbHostLog.Top - 15;
+                    if (logHeight > 60) _lbHostLog.Height = logHeight;
+                }
+            }
+
+            int clientW = _tabClient.ClientSize.Width;
+            int clientH = _tabClient.ClientSize.Height;
+
+            if (clientW > 60 && clientH > 60)
+            {
+                int cardW = Math.Max(200, clientW - 40);
+
+                if (_gbClientConnect != null) _gbClientConnect.Width = cardW;
+
+                if (_rtbGuide != null)
+                {
+                    _rtbGuide.Width = cardW;
+                    int guideHeight = clientH - _rtbGuide.Top - 15;
+                    if (guideHeight > 60) _rtbGuide.Height = guideHeight;
+                }
+            }
         }
 
         #endregion

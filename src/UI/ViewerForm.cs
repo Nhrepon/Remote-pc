@@ -63,7 +63,8 @@ namespace RemotePC.UI
         private void InitializeComponent()
         {
             this.Text = "Remote Desktop - " + _client.HostAddress + ":" + _client.HostPort;
-            this.Size = new Size(1200, 800);
+            this.Size = new Size(1280, 800);
+            this.MinimumSize = new Size(1050, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
             this.Font = new Font("Segoe UI", 9f);
             this.BackColor = Color.FromArgb(20, 20, 20);
@@ -83,135 +84,118 @@ namespace RemotePC.UI
             _lblInfo.Text = string.Format("Host: {0} | Res: {1}x{2} | FPS: -- | Ping: --ms",
                 _client.HostAddress, _client.RemoteScreenWidth, _client.RemoteScreenHeight);
             _lblInfo.ForeColor = Color.FromArgb(220, 220, 220);
-            _lblInfo.Location = new Point(10, 12);
+            _lblInfo.Location = new Point(10, 11);
             _lblInfo.AutoSize = true;
-            _lblInfo.Font = new Font("Segoe UI", 8.5f, FontStyle.Regular);
+            _lblInfo.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
             _toolbar.Controls.Add(_lblInfo);
 
-            int rightX = this.ClientSize.Width - 10;
+            FlowLayoutPanel pnlTools = new FlowLayoutPanel();
+            pnlTools.Dock = DockStyle.Right;
+            pnlTools.FlowDirection = FlowDirection.RightToLeft;
+            pnlTools.WrapContents = false;
+            pnlTools.AutoSize = true;
+            pnlTools.Padding = new Padding(0, 5, 8, 0);
+            _toolbar.Controls.Add(pnlTools);
 
-            // Disconnect Button
+            // 1. Disconnect Button
             _btnDisconnect = CreateToolbarButton("Disconnect", Color.FromArgb(220, 53, 69));
-            _btnDisconnect.Location = new Point(rightX - 90, 6);
-            _btnDisconnect.Size = new Size(85, 28);
-            _btnDisconnect.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnDisconnect.Size = new Size(82, 28);
+            _btnDisconnect.Margin = new Padding(3, 1, 3, 1);
             _btnDisconnect.Click += delegate { _client.Disconnect(); this.Close(); };
-            _toolbar.Controls.Add(_btnDisconnect);
-            rightX -= 96;
+            pnlTools.Controls.Add(_btnDisconnect);
 
-            // Fullscreen Button
-            _btnFullscreen = CreateToolbarButton("⛶ Fullscreen", Color.FromArgb(50, 55, 65));
-            _btnFullscreen.Location = new Point(rightX - 95, 6);
-            _btnFullscreen.Size = new Size(90, 28);
-            _btnFullscreen.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            // 2. Fullscreen Button
+            _btnFullscreen = CreateToolbarButton("⛶ Full", Color.FromArgb(50, 55, 65));
+            _btnFullscreen.Size = new Size(68, 28);
+            _btnFullscreen.Margin = new Padding(3, 1, 3, 1);
             _btnFullscreen.Click += delegate { ToggleFullscreen(); };
-            _toolbar.Controls.Add(_btnFullscreen);
-            rightX -= 100;
+            pnlTools.Controls.Add(_btnFullscreen);
 
-            // Chat Button
+            // 3. Chat Button
             _btnChat = CreateToolbarButton("💬 Chat", Color.FromArgb(50, 55, 65));
-            _btnChat.Location = new Point(rightX - 75, 6);
-            _btnChat.Size = new Size(70, 28);
-            _btnChat.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnChat.Size = new Size(65, 28);
+            _btnChat.Margin = new Padding(3, 1, 3, 1);
             _btnChat.Click += BtnChat_Click;
-            _toolbar.Controls.Add(_btnChat);
-            rightX -= 80;
+            pnlTools.Controls.Add(_btnChat);
 
-            // Files Button
+            // 4. Files Button
             _btnFiles = CreateToolbarButton("📁 Files", Color.FromArgb(50, 55, 65));
-            _btnFiles.Location = new Point(rightX - 70, 6);
-            _btnFiles.Size = new Size(65, 28);
-            _btnFiles.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnFiles.Size = new Size(62, 28);
+            _btnFiles.Margin = new Padding(3, 1, 3, 1);
             _btnFiles.Click += BtnFiles_Click;
-            _toolbar.Controls.Add(_btnFiles);
-            rightX -= 76;
+            pnlTools.Controls.Add(_btnFiles);
 
-            // SysInfo Button
+            // 5. SysInfo Button
             _btnSysInfo = CreateToolbarButton("ℹ Info", Color.FromArgb(50, 55, 65));
-            _btnSysInfo.Location = new Point(rightX - 65, 6);
-            _btnSysInfo.Size = new Size(60, 28);
-            _btnSysInfo.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnSysInfo.Size = new Size(58, 28);
+            _btnSysInfo.Margin = new Padding(3, 1, 3, 1);
             _btnSysInfo.Click += delegate { _client.RequestSystemInfo(); };
-            _toolbar.Controls.Add(_btnSysInfo);
-            rightX -= 70;
+            pnlTools.Controls.Add(_btnSysInfo);
 
-            // Clipboard Sync Button
+            // 6. Clipboard Sync Button
             _btnClipboard = CreateToolbarButton("📋 Clip", Color.FromArgb(50, 55, 65));
-            _btnClipboard.Location = new Point(rightX - 65, 6);
-            _btnClipboard.Size = new Size(60, 28);
-            _btnClipboard.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnClipboard.Size = new Size(58, 28);
+            _btnClipboard.Margin = new Padding(3, 1, 3, 1);
             _btnClipboard.Click += BtnClipboard_Click;
-            _toolbar.Controls.Add(_btnClipboard);
-            rightX -= 70;
+            pnlTools.Controls.Add(_btnClipboard);
 
-            // Screenshot Button
+            // 7. Screenshot Button
             _btnScreenshot = CreateToolbarButton("📷 Snap", Color.FromArgb(50, 55, 65));
-            _btnScreenshot.Location = new Point(rightX - 65, 6);
-            _btnScreenshot.Size = new Size(60, 28);
-            _btnScreenshot.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnScreenshot.Size = new Size(58, 28);
+            _btnScreenshot.Margin = new Padding(3, 1, 3, 1);
             _btnScreenshot.Click += BtnScreenshot_Click;
-            _toolbar.Controls.Add(_btnScreenshot);
-            rightX -= 70;
+            pnlTools.Controls.Add(_btnScreenshot);
 
-            // Quick Actions Dropdown Button
+            // 8. Quick Actions Dropdown Button
             BuildActionsMenu();
             _btnActions = CreateToolbarButton("⚡ Actions ▾", Color.FromArgb(0, 122, 204));
-            _btnActions.Location = new Point(rightX - 85, 6);
-            _btnActions.Size = new Size(80, 28);
-            _btnActions.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _btnActions.Size = new Size(78, 28);
+            _btnActions.Margin = new Padding(3, 1, 3, 1);
             _btnActions.Click += delegate { _actionsMenu.Show(_btnActions, new Point(0, _btnActions.Height)); };
-            _toolbar.Controls.Add(_btnActions);
-            rightX -= 90;
+            pnlTools.Controls.Add(_btnActions);
 
-            // Quality Dropdown
+            // 9. Quality Dropdown
             _cboQuality = new ComboBox();
             _cboQuality.DropDownStyle = ComboBoxStyle.DropDownList;
-            _cboQuality.Items.AddRange(new object[] { "Speed (35%)", "Balanced (60%)", "High (80%)", "Ultra (95%)" });
+            _cboQuality.Items.AddRange(new object[] { "Speed", "Balanced", "High", "Ultra" });
             _cboQuality.SelectedIndex = 1; // Balanced
-            _cboQuality.Location = new Point(rightX - 110, 7);
-            _cboQuality.Size = new Size(105, 25);
-            _cboQuality.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _cboQuality.Size = new Size(82, 26);
+            _cboQuality.Margin = new Padding(3, 2, 3, 1);
             _cboQuality.SelectedIndexChanged += CboQuality_SelectedIndexChanged;
-            _toolbar.Controls.Add(_cboQuality);
-            rightX -= 115;
+            pnlTools.Controls.Add(_cboQuality);
 
-            // View Mode Dropdown
+            // 10. View Mode Dropdown
             _cboViewMode = new ComboBox();
             _cboViewMode.DropDownStyle = ComboBoxStyle.DropDownList;
-            _cboViewMode.Items.AddRange(new object[] { "Fit Screen", "Original (1:1)", "Stretch" });
+            _cboViewMode.Items.AddRange(new object[] { "Fit", "1:1", "Stretch" });
             _cboViewMode.SelectedIndex = 0;
-            _cboViewMode.Location = new Point(rightX - 105, 7);
-            _cboViewMode.Size = new Size(100, 25);
-            _cboViewMode.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _cboViewMode.Size = new Size(72, 26);
+            _cboViewMode.Margin = new Padding(3, 2, 3, 1);
             _cboViewMode.SelectedIndexChanged += CboViewMode_SelectedIndexChanged;
-            _toolbar.Controls.Add(_cboViewMode);
-            rightX -= 110;
+            pnlTools.Controls.Add(_cboViewMode);
 
-            // Display Monitor Dropdown
+            // 11. Display Monitor Dropdown
             _cboDisplay = new ComboBox();
             _cboDisplay.DropDownStyle = ComboBoxStyle.DropDownList;
-            _cboDisplay.Items.AddRange(new object[] { "Primary Display", "All Displays" });
+            _cboDisplay.Items.AddRange(new object[] { "Primary", "All Displays" });
             _cboDisplay.SelectedIndex = 0;
-            _cboDisplay.Location = new Point(rightX - 120, 7);
-            _cboDisplay.Size = new Size(115, 25);
-            _cboDisplay.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _cboDisplay.Size = new Size(95, 26);
+            _cboDisplay.Margin = new Padding(3, 2, 3, 1);
             _cboDisplay.SelectedIndexChanged += delegate
             {
                 _client.SendDisplayChange((byte)_cboDisplay.SelectedIndex);
             };
-            _toolbar.Controls.Add(_cboDisplay);
-            rightX -= 125;
+            pnlTools.Controls.Add(_cboDisplay);
 
-            // Control CheckBox
+            // 12. Control CheckBox
             _chkControl = new CheckBox();
             _chkControl.Text = "Control";
             _chkControl.Checked = true;
             _chkControl.ForeColor = Color.White;
-            _chkControl.Location = new Point(rightX - 75, 9);
-            _chkControl.Size = new Size(70, 22);
-            _chkControl.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            _chkControl.Size = new Size(68, 26);
+            _chkControl.Margin = new Padding(3, 4, 3, 1);
             _chkControl.CheckedChanged += delegate { _allowInput = _chkControl.Checked; };
-            _toolbar.Controls.Add(_chkControl);
+            pnlTools.Controls.Add(_chkControl);
 
             #endregion
 
@@ -509,14 +493,14 @@ namespace RemotePC.UI
 
                 this.FormBorderStyle = FormBorderStyle.None;
                 this.WindowState = FormWindowState.Maximized;
-                _btnFullscreen.Text = "⛶ Exit Full";
+                _btnFullscreen.Text = "⛶ Window";
                 _isFullscreen = true;
             }
             else
             {
                 this.FormBorderStyle = _prevBorderStyle;
                 this.WindowState = _prevWindowState;
-                _btnFullscreen.Text = "⛶ Fullscreen";
+                _btnFullscreen.Text = "⛶ Full";
                 _isFullscreen = false;
             }
         }
