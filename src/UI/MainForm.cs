@@ -424,6 +424,11 @@ namespace RemotePC.UI
             btnFirewall.Click += delegate { FixFirewallNow(); };
             flowShortcuts.Controls.Add(btnFirewall);
 
+            Button btnRustDesk = new Button() { Text = "🪟 Launch RustDesk", AutoSize = true, Height = 30, Margin = new Padding(10, 0, 0, 0) };
+            btnRustDesk.FlatStyle = FlatStyle.Flat;
+            btnRustDesk.Click += delegate { LaunchRustDeskFallback(null); };
+            flowShortcuts.Controls.Add(btnRustDesk);
+
             // Row 3: Status of the automatic setup
             _lblAutoStatus = new Label();
             _lblAutoStatus.Location = new Point(12, 104);
@@ -1389,6 +1394,11 @@ namespace RemotePC.UI
             btnAddStartMenu.Click += delegate { CreateShortcut("startmenu"); };
             flowClientOpts.Controls.Add(btnAddStartMenu);
 
+            Button btnRustDeskClient = new Button() { Text = "🪟 Launch RustDesk", AutoSize = true, Height = 28, Margin = new Padding(10, 2, 0, 0) };
+            btnRustDeskClient.FlatStyle = FlatStyle.Flat;
+            btnRustDeskClient.Click += delegate { LaunchRustDeskFallback(_settings != null ? _settings.RustDeskId : null); };
+            flowClientOpts.Controls.Add(btnRustDeskClient);
+
             top += 42;
 
             // 5. Connection Guide
@@ -1517,6 +1527,17 @@ namespace RemotePC.UI
                                 "Could not connect to {0}.{1}\n\nEnsure:\n1. The server is running on the other PC (green status).\n2. If you are on different networks, ask for a fresh connection code - the host's address changes when it switches Wi-Fi.\n3. Hotel/cafe/public Wi-Fi usually blocks inbound connections; use Tailscale or a home/office network.\n4. The PIN is correct (the host may have generated a new one).{2}",
                                 ConnectionCode.FormatEndpoint(host, port), hint, detail),
                             "Connection Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+                        if (RustDeskHelper.IsInstalled(_settings != null ? _settings.RustDeskPath : null))
+                        {
+                            DialogResult rd = MessageBox.Show(
+                                "RustDesk is installed on this PC. Open it as a fallback for this connection?",
+                                "Launch RustDesk?", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                            if (rd == DialogResult.Yes)
+                            {
+                                LaunchRustDeskFallback(_settings != null ? _settings.RustDeskId : null);
+                            }
+                        }
                     }
                 }));
             });
@@ -1918,6 +1939,20 @@ namespace RemotePC.UI
                 }
                 catch { }
             });
+        }
+
+        private void LaunchRustDeskFallback(string peerId)
+        {
+            string error;
+            if (RustDeskHelper.Launch(_settings != null ? _settings.RustDeskPath : null, peerId, out error))
+            {
+                LogHostLine("[RustDesk] Launched" + (string.IsNullOrEmpty(peerId) ? "." : " for id " + peerId + "."));
+            }
+            else
+            {
+                MessageBox.Show("Could not launch RustDesk: " + error,
+                    "RustDesk", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
 
         /// <summary>Appends a line to the host activity log from any thread.</summary>

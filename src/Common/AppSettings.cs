@@ -23,6 +23,10 @@ namespace RemotePC.Common
         public bool EnableUpnp { get; set; }
         public bool EnableDiscovery { get; set; }
 
+        // Optional RustDesk integration (fallback for hard networks)
+        public string RustDeskPath { get; set; }
+        public string RustDeskId { get; set; }
+
         public string LastHost { get; set; }
         public string LastPassword { get; set; }
         public bool AutoConnect { get; set; }
@@ -47,6 +51,9 @@ namespace RemotePC.Common
             EnableNatPmp = true;
             EnableUpnp = true;
             EnableDiscovery = true;
+
+            RustDeskPath = "";
+            RustDeskId = "";
 
             LastHost = "";
             LastPassword = "";
@@ -141,6 +148,10 @@ namespace RemotePC.Common
                         settings.EnableUpnp = ParseBool(val);
                     else if (key.Equals("EnableDiscovery", StringComparison.OrdinalIgnoreCase))
                         settings.EnableDiscovery = ParseBool(val);
+                    else if (key.Equals("RustDeskPath", StringComparison.OrdinalIgnoreCase))
+                        settings.RustDeskPath = val;
+                    else if (key.Equals("RustDeskId", StringComparison.OrdinalIgnoreCase))
+                        settings.RustDeskId = val;
                 }
             }
             catch { }
@@ -168,6 +179,8 @@ namespace RemotePC.Common
                     sw.WriteLine("EnableNatPmp=1");
                     sw.WriteLine("EnableUpnp=1");
                     sw.WriteLine("EnableDiscovery=1");
+                    sw.WriteLine("RustDeskPath=");
+                    sw.WriteLine("RustDeskId=");
                 }
             }
             catch { }
@@ -203,6 +216,8 @@ namespace RemotePC.Common
                     sw.WriteLine("EnableNatPmp=" + (EnableNatPmp ? "1" : "0"));
                     sw.WriteLine("EnableUpnp=" + (EnableUpnp ? "1" : "0"));
                     sw.WriteLine("EnableDiscovery=" + (EnableDiscovery ? "1" : "0"));
+                    sw.WriteLine("RustDeskPath=" + (RustDeskPath ?? ""));
+                    sw.WriteLine("RustDeskId=" + (RustDeskId ?? ""));
                 }
             }
             catch { }
