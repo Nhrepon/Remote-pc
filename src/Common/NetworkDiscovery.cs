@@ -105,6 +105,7 @@ namespace RemotePC.Common
                 udp = new UdpClient();
                 udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 udp.Client.Bind(new IPEndPoint(IPAddress.Any, DISCOVERY_PORT));
+                udp.Client.ReceiveTimeout = 1000;
 
                 while (_isListening)
                 {

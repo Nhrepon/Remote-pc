@@ -105,6 +105,7 @@ namespace RemotePC.Common
             request.ReadWriteTimeout = 4000;
             request.KeepAlive = false;
             request.UserAgent = "RemotePC";
+            request.Proxy = null;
 
             using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
             using (StreamReader reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
@@ -138,6 +139,13 @@ namespace RemotePC.Common
         public static bool IsPrivateOrShared(IPAddress address)
         {
             if (address == null) return true;
+
+            // IPv4-mapped IPv6 addresses (::ffff:a.b.c.d) inherit the reachability of the
+            // embedded IPv4 address; classify them the same way.
+            if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 && address.IsIPv4MappedToIPv6)
+            {
+                return IsPrivateOrShared(address.MapToIPv4());
+            }
 
             byte[] bytes = address.GetAddressBytes();
 

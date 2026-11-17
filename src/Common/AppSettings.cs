@@ -16,6 +16,13 @@ namespace RemotePC.Common
         public bool AllowControl { get; set; }
         public bool AllowFileTransfer { get; set; }
 
+        // Network automation options (can be overridden by network.ini next to the exe)
+        public string BindAddress { get; set; }
+        public bool EnableFirewallAuto { get; set; }
+        public bool EnableNatPmp { get; set; }
+        public bool EnableUpnp { get; set; }
+        public bool EnableDiscovery { get; set; }
+
         public string LastHost { get; set; }
         public string LastPassword { get; set; }
         public bool AutoConnect { get; set; }
@@ -34,6 +41,12 @@ namespace RemotePC.Common
             MinimizeToTray = false;
             AllowControl = true;
             AllowFileTransfer = true;
+
+            BindAddress = "";
+            EnableFirewallAuto = true;
+            EnableNatPmp = true;
+            EnableUpnp = true;
+            EnableDiscovery = true;
 
             LastHost = "";
             LastPassword = "";
@@ -89,6 +102,77 @@ namespace RemotePC.Common
             return val == "1" || val.Equals("true", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Reads a simple key=value network configuration file (network.ini) and overrides
+        /// the matching settings. Missing keys keep their current values, so a partial
+        /// file is valid.
+        /// </summary>
+        public static void ApplyNetworkConfigFile(AppSettings settings, string path)
+        {
+            if (settings == null || string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+            try
+            {
+                string[] lines = File.ReadAllLines(path);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i].Trim();
+                    if (string.IsNullOrEmpty(line) || line.StartsWith("#") || line.StartsWith(";")) continue;
+                    int eq = line.IndexOf('=');
+                    if (eq <= 0) continue;
+                    string key = line.Substring(0, eq).Trim();
+                    string val = line.Substring(eq + 1).Trim();
+
+                    if (key.Equals("BindAddress", StringComparison.OrdinalIgnoreCase) ||
+                        key.Equals("HostBindAddress", StringComparison.OrdinalIgnoreCase))
+                        settings.BindAddress = val;
+                    else if (key.Equals("ServerPort", StringComparison.OrdinalIgnoreCase) ||
+                             key.Equals("HostPort", StringComparison.OrdinalIgnoreCase))
+                    { int p; if (int.TryParse(val, out p)) settings.ServerPort = p; }
+                    else if (key.Equals("Password", StringComparison.OrdinalIgnoreCase) ||
+                             key.Equals("HostPassword", StringComparison.OrdinalIgnoreCase))
+                        settings.Password = val;
+                    else if (key.Equals("AutoStartServer", StringComparison.OrdinalIgnoreCase))
+                        settings.AutoStartServer = ParseBool(val);
+                    else if (key.Equals("EnableFirewallAuto", StringComparison.OrdinalIgnoreCase))
+                        settings.EnableFirewallAuto = ParseBool(val);
+                    else if (key.Equals("EnableNatPmp", StringComparison.OrdinalIgnoreCase))
+                        settings.EnableNatPmp = ParseBool(val);
+                    else if (key.Equals("EnableUpnp", StringComparison.OrdinalIgnoreCase))
+                        settings.EnableUpnp = ParseBool(val);
+                    else if (key.Equals("EnableDiscovery", StringComparison.OrdinalIgnoreCase))
+                        settings.EnableDiscovery = ParseBool(val);
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// Creates a default network.ini next to the executable if one is not present, so
+        /// users have a documented place to tune network behaviour.
+        /// </summary>
+        public static void CreateDefaultNetworkConfig(string path)
+        {
+            if (string.IsNullOrEmpty(path) || File.Exists(path)) return;
+            try
+            {
+                string dir = Path.GetDirectoryName(path);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                using (StreamWriter sw = new StreamWriter(path, false))
+                {
+                    sw.WriteLine("# RemotePC network configuration");
+                    sw.WriteLine("# Delete or edit these values; lines starting with # are ignored.");
+                    sw.WriteLine("BindAddress=");
+                    sw.WriteLine("ServerPort=8888");
+                    sw.WriteLine("AutoStartServer=0");
+                    sw.WriteLine("EnableFirewallAuto=1");
+                    sw.WriteLine("EnableNatPmp=1");
+                    sw.WriteLine("EnableUpnp=1");
+                    sw.WriteLine("EnableDiscovery=1");
+                }
+            }
+            catch { }
+        }
+
         public void Save()
         {
             try
@@ -114,6 +198,11 @@ namespace RemotePC.Common
                     sw.WriteLine("FirstRunComplete=" + (FirstRunComplete ? "1" : "0"));
                     sw.WriteLine("FirewallRulePorts=" + (FirewallRulePorts ?? ""));
                     sw.WriteLine("UpnpAttempted=" + (UpnpAttempted ? "1" : "0"));
+                    sw.WriteLine("BindAddress=" + (BindAddress ?? ""));
+                    sw.WriteLine("EnableFirewallAuto=" + (EnableFirewallAuto ? "1" : "0"));
+                    sw.WriteLine("EnableNatPmp=" + (EnableNatPmp ? "1" : "0"));
+                    sw.WriteLine("EnableUpnp=" + (EnableUpnp ? "1" : "0"));
+                    sw.WriteLine("EnableDiscovery=" + (EnableDiscovery ? "1" : "0"));
                 }
             }
             catch { }

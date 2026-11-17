@@ -85,6 +85,10 @@ namespace RemotePC.Common
                 Entry entry;
                 if (!_entries.TryGetValue(key, out entry)) return MaxFailuresPerAddress;
 
+                // While an address is locked out it has no attempts left, even though the
+                // failure counter was reset when the lockout started.
+                if (entry.LockedUntilUtc > DateTime.UtcNow) return 0;
+
                 int left = MaxFailuresPerAddress - entry.Failures;
                 return left > 0 ? left : 0;
             }

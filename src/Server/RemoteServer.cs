@@ -34,7 +34,7 @@ namespace RemotePC.Server
             AllowFileTransfer = true;
         }
 
-        public void Start(int port)
+        public void Start(int port, string bindAddress = null)
         {
             if (_isRunning) return;
 
@@ -44,22 +44,73 @@ namespace RemotePC.Server
                 // A dual-stack (IPv6 + IPv4) listener. On networks with a public IPv6
                 // address this gives the other PC a direct route with no port forwarding at
                 // all. If IPv6 is unavailable the IPv4 listener is used instead.
+                //
+                // TcpListener.Create only constructs the socket; the actual bind happens in
+                // Start(), so a fallback that only wraps Create() never triggers. Try the
+                // dual-stack listener first and fall back to a plain IPv4 listener if it
+                // fails to bind or listen.
+                bool started = false;
+                Exception lastError = null;
+
+                if (!string.IsNullOrEmpty(bindAddress))
+                {
+                    try
+                    {
+                        IPAddress bind = IPAddress.Parse(bindAddress.Trim());
+                        _listener = new TcpListener(bind, Port);
+                        try { _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true); }
+                        catch { }
+                        _listener.Start(10);
+                        started = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        lastError = ex;
+                        try { if (_listener != null) _listener.Stop(); } catch { }
+                        _listener = null;
+                    }
+                }
+                else
+                {
                 try
                 {
                     _listener = TcpListener.Create(Port);
+                    try { _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true); }
+                    catch { }
+                    _listener.Start(10);
+                    started = true;
                 }
-                catch
+                catch (Exception ex)
                 {
-                    _listener = new TcpListener(IPAddress.Any, Port);
+                    lastError = ex;
+                    try { if (_listener != null) _listener.Stop(); } catch { }
+                    _listener = null;
                 }
 
-                try
+                if (!started)
                 {
-                    _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    try
+                    {
+                        _listener = new TcpListener(IPAddress.Any, Port);
+                        try { _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true); }
+                        catch { }
+                        _listener.Start(10);
+                        started = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        lastError = ex;
+                        try { if (_listener != null) _listener.Stop(); } catch { }
+                        _listener = null;
+                    }
                 }
-                catch { }
+                } // end else (dual-stack path)
 
-                _listener.Start(10);
+                if (!started)
+                {
+                    throw lastError != null ? lastError : new SocketException();
+                }
+
                 _isRunning = true;
 
                 _acceptThread = new Thread(AcceptLoop);

@@ -45,7 +45,24 @@ namespace RemotePC.Common
                         {
                             NetworkAdapterInfo info = new NetworkAdapterInfo();
                             string ipStr = addr.Address.ToString();
-                            bool isTailscale = ipStr.StartsWith("100.") || ni.Description.IndexOf("Tailscale", StringComparison.OrdinalIgnoreCase) >= 0 || ni.Name.IndexOf("Tailscale", StringComparison.OrdinalIgnoreCase) >= 0;
+                            bool isTailscaleByName = ni.Description.IndexOf("Tailscale", StringComparison.OrdinalIgnoreCase) >= 0
+                                || ni.Name.IndexOf("Tailscale", StringComparison.OrdinalIgnoreCase) >= 0;
+                            bool isTailscaleByIp = false;
+                            if (ipStr.StartsWith("100."))
+                            {
+                                // Tailscale borrows the 100.64.0.0/10 carrier-grade NAT range for its
+                                // own nodes; a 100.x address outside that range is not Tailscale.
+                                string[] octets = ipStr.Split('.');
+                                if (octets.Length == 4)
+                                {
+                                    int second;
+                                    if (int.TryParse(octets[1], out second))
+                                    {
+                                        isTailscaleByIp = second >= 64 && second <= 127;
+                                    }
+                                }
+                            }
+                            bool isTailscale = isTailscaleByName || isTailscaleByIp;
 
                             info.Name = isTailscale ? ("★ " + ni.Name + " (Internet/Tailscale)") : ni.Name;
                             info.Description = ni.Description;

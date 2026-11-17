@@ -572,6 +572,28 @@ namespace RemotePC.Common
                 }
             }
             catch { }
+
+            try
+            {
+                System.Net.NetworkInformation.NetworkInterface[] interfaces =
+                    System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces();
+                for (int i = 0; i < interfaces.Length; i++)
+                {
+                    System.Net.NetworkInformation.NetworkInterface ni = interfaces[i];
+                    if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                    if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                    foreach (System.Net.NetworkInformation.UnicastIPAddressInformation addr in ni.GetIPProperties().UnicastAddresses)
+                    {
+                        if (addr.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                            !addr.Address.Equals(System.Net.IPAddress.Loopback))
+                        {
+                            return addr.Address.ToString();
+                        }
+                    }
+                }
+            }
+            catch { }
+
             return "127.0.0.1";
         }
 

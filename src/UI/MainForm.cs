@@ -109,6 +109,12 @@ namespace RemotePC.UI
 
             _settings = AppSettings.Load();
 
+            // Optional network.ini next to the executable overrides network-related settings,
+            // so the same file can be copied to both PCs for identical network behaviour.
+            string networkConfigPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "network.ini");
+            AppSettings.ApplyNetworkConfigFile(_settings, networkConfigPath);
+            AppSettings.CreateDefaultNetworkConfig(networkConfigPath);
+
             InitializeComponent();
             InitializeTrayIcon();
             InitializeHostTab();
@@ -654,7 +660,7 @@ namespace RemotePC.UI
                     _server.OnClientDisconnected += Server_OnClientDisconnected;
 
                     int port = (int)_numHostPort.Value;
-                    _server.Start(port);
+                    _server.Start(port, _settings != null ? _settings.BindAddress : null);
 
                     _btnToggleServer.Text = "Stop Server";
                     _btnToggleServer.BackColor = Color.FromArgb(220, 53, 69);
@@ -663,11 +669,17 @@ namespace RemotePC.UI
                     _btnGenPin.Enabled = false;
 
                     // Start LAN broadcasting so other PCs can discover us
-                    try { NetworkDiscovery.StartBroadcasting(port); }
-                    catch { }
+                    if (_settings == null || _settings.EnableDiscovery)
+                    {
+                        try { NetworkDiscovery.StartBroadcasting(port); }
+                        catch { }
+                    }
 
                     // Ensure the firewall lets this port in, without ever asking the user to do it
-                    EnsureFirewallRulesAsync(port);
+                    if (_settings == null || _settings.EnableFirewallAuto)
+                    {
+                        EnsureFirewallRulesAsync(port);
+                    }
 
                     // Open the router for internet access, hands-free. NAT-PMP is tried first
                     // because plenty of routers answer it while their UPnP service is off; UPnP
@@ -707,6 +719,40 @@ namespace RemotePC.UI
         {
             _advertisedPort = port;
 
+            bool tryNat = _settings == null || _settings.EnableNatPmp;
+            bool tryUpnp = _settings == null || _settings.EnableUpnp;
+
+            if (!tryNat)
+            {
+                if (tryUpnp)
+                {
+                    UPnPPortForwarder.ForwardPortAsync(port, delegate(bool upnpOk, string upnpMessage)
+                    {
+                        LogHostLine("[UPnP] " + upnpMessage);
+
+                        if (upnpOk && !string.IsNullOrEmpty(UPnPPortForwarder.ExternalPublicIp))
+                        {
+                            _advertisedPort = port;
+                            _lastPublicIp = UPnPPortForwarder.ExternalPublicIp;
+                            LogHostLine("[Internet] Ready from any network. Connect to "
+                                + ConnectionCode.FormatEndpoint(UPnPPortForwarder.ExternalPublicIp, port));
+                            ShowInternetAddress(port, UPnPPortForwarder.ExternalPublicIp, true);
+                            VerifyMappedAddress(UPnPPortForwarder.ExternalPublicIp);
+                            return;
+                        }
+
+                        LogHostLine("[Internet] No automatic router mapping available on this network.");
+                        ResolveFallbackAddress(port);
+                    });
+                }
+                else
+                {
+                    LogHostLine("[Internet] Automatic router mapping disabled by network.ini.");
+                    ResolveFallbackAddress(port);
+                }
+                return;
+            }
+
             NatPmpPortMapper.MapAsync(port, delegate(bool natOk, string natMessage)
             {
                 LogHostLine("[NAT-PMP] " + natMessage);
@@ -721,6 +767,13 @@ namespace RemotePC.UI
                         + ConnectionCode.FormatEndpoint(NatPmpPortMapper.ExternalPublicIp, externalPort));
                     ShowInternetAddress(externalPort, NatPmpPortMapper.ExternalPublicIp, true);
                     VerifyMappedAddress(NatPmpPortMapper.ExternalPublicIp);
+                    return;
+                }
+
+                if (!tryUpnp)
+                {
+                    LogHostLine("[Internet] UPnP disabled by network.ini.");
+                    ResolveFallbackAddress(port);
                     return;
                 }
 
@@ -949,13 +1002,19 @@ namespace RemotePC.UI
                 int port = _server.Port;
 
                 // The old subnet's broadcast address and router mapping are both stale.
-                try { NetworkDiscovery.StopBroadcasting(); }
-                catch { }
-                try { NetworkDiscovery.StartBroadcasting(port); }
-                catch { }
+                if (_settings == null || _settings.EnableDiscovery)
+                {
+                    try { NetworkDiscovery.StopBroadcasting(); }
+                    catch { }
+                    try { NetworkDiscovery.StartBroadcasting(port); }
+                    catch { }
+                }
 
                 // A new network usually has a different firewall profile (Public/Private).
-                EnsureFirewallRulesAsync(port);
+                if (_settings == null || _settings.EnableFirewallAuto)
+                {
+                    EnsureFirewallRulesAsync(port);
+                }
 
                 StopInternetAccess();
                 OpenInternetAccessAsync(port);
@@ -1752,12 +1811,20 @@ namespace RemotePC.UI
                     try { port = (int)this.Invoke(new Func<int>(delegate { return (int)_numHostPort.Value; })); }
                     catch { }
 
-                    List<int> ports = new List<int>();
-                    ports.Add(port);
-                    if (_settings != null && _settings.ServerPort != port) ports.Add(_settings.ServerPort);
+                    bool fwOk = true;
+                    string fwError = null;
+                    if (_settings == null || _settings.EnableFirewallAuto)
+                    {
+                        List<int> ports = new List<int>();
+                        ports.Add(port);
+                        if (_settings != null && _settings.ServerPort != port) ports.Add(_settings.ServerPort);
 
-                    string fwError;
-                    bool fwOk = FirewallHelper.EnsureRules(ports, out fwError);
+                        fwOk = FirewallHelper.EnsureRules(ports, out fwError);
+                    }
+                    else
+                    {
+                        fwError = "disabled by network.ini";
+                    }
                     if (fwOk)
                     {
                         LogHostLine("[Setup] Windows Firewall rules ready - no manual configuration needed.");
